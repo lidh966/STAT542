@@ -1,0 +1,358 @@
+---
+title: 'STAT 542: Homework 8'
+author: "FALL 2020, by Donghui Li (donghui3)"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+  knitr::opts_chunk$set(echo = TRUE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '80%', fig.align = "center")
+  knitr::opts_chunk$set(cache = TRUE)
+  options(width = 90)
+```
+
+```{css, echo=FALSE}
+.solution {
+background-color: #e6ffe6;
+}
+```
+
+## About HW8
+
+We practice two main tools: PCA and $k$-means. For $k$-means, you need to code your own algorithm. For PCA, understand how to perform prediction using the rotation matrix and effectively reduce the dimension. 
+
+## Question 1 [50 Points] Implement the K-Means Algorithm
+
+Write your own code of k-means. The algorithm essentially performs the following:
+
+  * Initialize cluster means or cluster membership
+  * Iterate between the updates of cluster means and membership
+  * Output the results when they do not change anymore
+  
+You should consider the following while writing the algorithm:
+
+  * Avoiding over-use of for-loop such that your code can be applied to data with larger size (in question 2)
+  * [10 points] You should further consider multiple starting values and compare the within-cluster distances to pick the best
+  * [15 points] Compare your results with a built-in $k$ means algorithm, e.g., `kmeans()`, on the `iris` data. Make sure that you understand the iris data. For both your code and the built-in function, use $k=3$. Try 1 and 20 random starts and compare the results with different seeds. Do you observe any difference? What is the cause of the difference?
+  
+### Answer
+  My k-means clustring code is shown below:
+```{r}
+
+cal_within_dist <- function(df, k) {
+  sumx = 0
+  for (i in 1:k) {
+    sumx = sumx + sum(dist(df[which(df$Group==i), ]))
+  }
+  return(sumx)
+}
+
+my_km1 <- function(df, k, nstart=1) {
+  ### my k mean cluster initialized using cluster membership
+  
+  if (nstart != 1) {
+    set.seed(1)
+    df1 = df
+    df$Group = sample(1:k, nrow(df), replace = TRUE)
+    for (i in 2:nstart) {
+      set.seed(i)
+      dist1 = cal_within_dist(df, k)
+      df1$Group = sample(1:k, nrow(df), replace = TRUE)
+      dist2 = cal_within_dist(df1, k)
+      if (dist1 < dist2) {
+        df = df1
+      }
+    }
+  }
+  else {
+    df$Group = sample(1:k, nrow(df), replace = TRUE)
+  }
+  
+  df_new = df
+  p = ncol(df_new)-1
+  
+  count=0
+  max_iter = 100
+  while(count < max_iter) {
+    count = count+1
+    print(paste("iter#: ", count))
+
+    df_old = df_new
+    ### Calculate cluster mean
+    cmean = matrix(0, k, p)    # each row represents a group
+    for (i in 1:k) {
+      for (j in 1:p) {
+        temp_value = mean(df_old[which(df_old$Group==i), j])
+        cmean[i, j] = ifelse(is.nan(temp_value), 9999, temp_value)
+      }
+    }
+    
+    ### Assign new group
+    df_new = df_old
+    for (i in 1:nrow(df_new)) {
+      dis_vec = numeric(length = k)
+      p1 = as.numeric(df_new[i, 1:p])
+      for (j in 1:nrow(cmean)) {
+        p2 = cmean[j,]
+        dis_vec[j] = dist(rbind(p1, p2), method = "euclidean")
+      }
+      df_new$Group[i] = which.min(dis_vec)
+      
+    }
+    
+    ### Stop criteria
+    if (all(df_new$Group == df_old$Group)) {
+      break
+    }
+    
+  }
+  return(df_new)
+}
+```
+  Using the iris dataset to demonstrate my k-means clustering, as well as comparing with built-in function. For this purpose, I use `iris[1:4]` to cluster. The code and results are shown below. Note that the labels "1", "2" and "3" generated from my code and those from built-in function can be different, i.e., the same cluster is labeled "2" in my results while labeled with "1" in the built-in function results. From the printed results, we can observe that my code performs correctly.  
+```{r}
+df = iris[, 1:4]
+set.seed(10)
+k = 3
+
+# one random starts
+my_results = my_km1(df, k)    # my results   
+r_results <- kmeans(df, centers = 3, nstart = 1)    # kmean results
+
+results = data.frame("my cluster"=my_results$Group, "built-in cluster"=r_results$cluster)
+print(results)
+```
+  
+  Now using 20 random starts to drive my k-means. I can observe that the clustering results have no difference to the case with only one start. For the organization of the page, I didn't print the results here. However, if we look at the iteration times before convergence, the difference is huge. For the one start case, it takes 11 iterations to converge, while in the 20 starts case, it only takes 4 iterations. The difference is caused by the quality of the initial condition fed to the algorithm. In one start case, the initial condition can be very far from the true clusters, while by taking multiple random starts, we can get the initial cluster that is closer to the true one, therefore, the required iteration would be less. 
+  
+```{r}
+df = iris[, 1:4]
+k = 3
+
+# 20 random starts
+my_results2 = my_km1(df, k=3, nstart=20)    # my results   
+
+results = data.frame("one start"=my_results$Group, "twenty satrts"=my_results2$Group)
+```
+
+## Question 2 [50 Points] Clustering, Classification and Dimension Reduction
+
+Although clustering is an unsupervised algorithm, it may sometimes reveal the underlying true (unobserved) label associated with each observation. For this question, apply your K means clustering algorithm on the handwritten digit data (`zip.train` from the `ElemStatLearn` package). We only use digits 1, 4 and 8. 
+
+  * Given your clustering results, how to assign a label to each cluster? 
+  * With your assigned cluster, how to predict the label on the `zip.test` data?
+  * What is the classification error based on your model? A classification error is defined as $\frac{1}{n}\sum_i 1(y_i \neq \hat y_i)$.
+  
+### Answer
+The code and results are shown below. Based on my clustering results, the label "1" corresponds to the number "1", and the label "2" corresponds to the number "4" and the label "3" corresponds to the number "8". To predict the label on the test data, I firstly calculate the cluster mean ontained from the training dataset, and then loop the test dataset, to be specific, at each point of test dataset, I find the nearest cluster by calculating the Euclidean distance between the point and the cluster mean, and assign the cluster label to this data point. 
+
+```{r}
+library(ElemStatLearn)
+train = zip.train
+test = zip.test
+
+set.seed(10)
+
+one_train = train[train[,1]==1,]
+four_train = train[train[,1]==4,]
+eight_train = train[train[,1]==8,]
+com_train = rbind(one_train, four_train, eight_train)
+new_train = rbind(one_train, four_train, eight_train)[, 2:ncol(train)]
+
+one_test = test[test[,1]==1,]
+four_test = test[test[,1]==4,]
+eight_test = test[test[,1]==8,]
+com_test = rbind(one_test, four_test, eight_test)
+new_test = rbind(one_test, four_test, eight_test)[, 2:ncol(test)]
+
+cal_within_dist <- function(df, k) {
+  sumx = 0
+  for (i in 1:k) {
+    sumx = sumx + sum(dist(df[which(df$Group==i), ]))
+  }
+  return(sumx)
+}
+
+my_km1 <- function(df, k, nstart=1) {
+  ### my k mean cluster initialized using cluster membership
+
+  if (nstart != 1) {
+    set.seed(1)
+    df1 = df
+    df$Group = sample(1:k, nrow(df), replace = TRUE)
+    for (i in 2:nstart) {
+      set.seed(i)
+      dist1 = cal_within_dist(df, k)
+      df1$Group = sample(1:k, nrow(df), replace = TRUE)
+      dist2 = cal_within_dist(df1, k)
+      if (dist1 < dist2) {
+        df = df1
+      }
+    }
+  }
+  else {
+    df$Group = sample(1:k, nrow(df), replace = TRUE)
+  }
+  
+  df_new = df
+  p = ncol(df_new)-1
+  
+  count=0
+  max_iter = 100
+  while(count < max_iter) {
+    count = count+1
+
+    df_old = df_new
+    ### Calculate cluster mean
+    cmean = matrix(0, k, p)    # each row represents a group
+    for (i in 1:k) {
+      for (j in 1:p) {
+        temp_value = mean(df_old[which(df_old$Group==i), j])
+        cmean[i, j] = ifelse(is.nan(temp_value), 9999, temp_value)
+      }
+    }
+    
+    ### Assign new group
+    df_new = df_old
+    for (i in 1:nrow(df_new)) {
+      dis_vec = numeric(length = k)
+      p1 = as.numeric(df_new[i, 1:p])
+      for (j in 1:nrow(cmean)) {
+        p2 = cmean[j,]
+        dis_vec[j] = dist(rbind(p1, p2), method = "euclidean")
+      }
+      df_new$Group[i] = which.min(dis_vec)
+      
+    }
+    
+    ### Stop criteria
+    if (all(df_new$Group == df_old$Group)) {
+      break
+    }
+    
+  }
+  return(df_new)
+}
+
+train_results = my_km1(as.data.frame(new_train), k=3, nstart=1)
+
+# calculate cluster mean
+p = ncol(train)-1
+k = 3
+cluster_mean = matrix(0, k, p)    # each row represents a group
+for (i in 1:k) {
+  for (j in 1:p) {
+    temp_value = mean(train_results[which(train_results$Group==i), j])
+    cluster_mean[i, j] = ifelse(is.nan(temp_value), 9999, temp_value)
+  }
+}
+
+# test data
+new_test = as.data.frame(new_test)
+new_test$Group = integer(length = nrow(new_test))
+
+for (i in 1:nrow(new_test)) {
+  # loop all points in test
+  dis_vec = numeric(length = k)
+  p1 = as.numeric(new_test[i, 1:p])
+  for (j in 1:k) {
+    # loop k clusters
+    p2 = cluster_mean[j,]
+    dis_vec[j] = dist(rbind(p1, p2), method = "euclidean")
+  }
+  new_test$Group[i] = which.min(dis_vec)
+}
+
+test_compare = as.data.frame(cbind(com_test[,1], new_test$Group))
+test_compare$compare = logical(length = nrow(test_compare))
+for (i in 1:nrow(test_compare)) {
+  if (test_compare[i,1]==1 & test_compare[i,2]==1) {
+    test_compare[i,3] = TRUE
+  }
+  else if (test_compare[i,1]==4 & test_compare[i,2]==2) {
+    test_compare[i,3] = TRUE
+  }
+  else if (test_compare[i,1]==8 & test_compare[i,2]==3) {
+    test_compare[i,3] = TRUE
+  }
+}
+error = 1 - sum(test_compare$compare)/nrow(test_compare)
+print(paste("The classification error is: ", error))
+```
+
+Dimensionality often causes problems in a lot of machine learning algorithms. PCA is an effective way to reduce the dimension without sacrificing the clustering/classification performances. Repeat your analysis by 
+
+  * Process your data using PCA. Plot the data on a two-dimensional plot using the first two PC's. Mark the data points with different colors to represent their digits. 
+  * Based on the first two PCs, redo the k-means algorithm. Again, assign each cluster a label of the digit, and predict the label on the testing data. You need to do this prediction properly, meaning that your observed testing data is still the full data matrix, and you should utilize the information of PCA from the training data to construct the new features on the reduced dimensions. 
+  * Compare your PCA results with the results obtained by using the entire dataset. How much classification accuracy is sacrificed by using just two dimensions?
+  
+### Answer
+Plotting the PCA results using the first 2 PCs as below:
+```{r}
+library(ggplot2)
+zip.sub = zip.train[zip.train[,1] %in% c(1,4,8), -1]
+zip.sub.truth = as.factor(zip.train[zip.train[,1] %in% c(1,4,8), 1])
+pc = prcomp(zip.sub)
+ggplot(data = data.frame(pc$x), aes(x=PC1, y=PC2)) + 
+  geom_point(col=c("chartreuse4", "darkorange", "deepskyblue")[zip.sub.truth], size = 2)
+```
+
+Training using PC1 and PC2 from PCA analysis, the code and results are shown below. Please note that the label would be different this time because of the random split. Here the label "2" corresponds to the number 1, the label "3" corresponds to the number 4 and the label "1" corresponds to the number 8. 
+It can be observed that the classification error is `(error_pca - error)/error * 100% = 5.7%` higher than the previous one, meaning that $5.7%$ accuracy is sacrificed to use just two dimensions.
+```{r}
+set.seed(10)
+# train using PC1 + PC2
+pc = prcomp(new_train)
+train_pca = pc$x
+train_results_pca = my_km1(as.data.frame(train_pca[, 1:2]), k=3, nstart=1)
+
+cluster_mean_pca = matrix(0, k, p)    # each row represents a group
+for (i in 1:k) {
+  for (j in 1:p) {
+    temp_value = mean(new_train[which(train_results_pca$Group==i), j])
+    cluster_mean_pca[i, j] = ifelse(is.nan(temp_value), 9999, temp_value)
+  }
+}
+
+# test data
+new_test_pca = as.data.frame(new_test)
+new_test_pca$Group = integer(length = nrow(new_test))
+
+for (i in 1:nrow(new_test_pca)) {
+  # loop all points in test
+  dis_vec = numeric(length = k)
+  p1 = as.numeric(new_test_pca[i, 1:p])
+  for (j in 1:k) {
+    # loop k clusters
+    p2 = cluster_mean_pca[j,]
+    dis_vec[j] = dist(rbind(p1, p2), method = "euclidean")
+  }
+  new_test_pca$Group[i] = which.min(dis_vec)
+}
+
+test_compare_pca = as.data.frame(cbind(com_test[,1], new_test_pca$Group))
+test_compare_pca$compare = logical(length = nrow(test_compare_pca))
+for (i in 1:nrow(test_compare_pca)) {
+  if (test_compare_pca[i,1]==1 & test_compare_pca[i,2]==2) {
+    test_compare_pca[i,3] = TRUE
+  }
+  else if (test_compare_pca[i,1]==4 & test_compare_pca[i,2]==3) {
+    test_compare_pca[i,3] = TRUE
+  }
+  else if (test_compare_pca[i,1]==8 & test_compare_pca[i,2]==1) {
+    test_compare_pca[i,3] = TRUE
+  }
+}
+error_pca = 1 - sum(test_compare_pca$compare)/nrow(test_compare_pca)
+print(paste("The classification error is: ", error_pca))
+```

@@ -1,0 +1,457 @@
+---
+title: 'STAT 542: Homework 3'
+author: "FALL 2020, by Donghui Li"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+  knitr::opts_chunk$set(echo = TRUE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '80%', fig.align = "center")
+  knitr::opts_chunk$set(cache = TRUE)
+  options(width = 90)
+```
+
+```{css, echo=FALSE}
+.solution {
+background-color: #e6ffe6;
+}
+```
+## Question 1 [40 Points] A Simulation Study
+
+Let's use a simulation study to confirm the bias-variance trade-off of linear regressions. Consider the following model. 
+
+$$Y = \sum_j^p 0.9^j \times X_j + \epsilon$$
+All the covariates and the error term follow i.i.d. standard Gaussian distribution. The true model involves all the variables; however, variables with larger indexes do not contribute significantly to the variation. Hence, there could be a benefit using a smaller subset for prediction purposes. Let's confirm that with a simulation study. The study essentially repeats the following steps 200 times and obtain the averaged results:
+
+  * Generate 300 training data (both covariates and outcomes) with $p=100$, and generate another 300 outcomes as the testing data $Y$ using the same covariate value.
+  * Consider using only the first $j$ variables to fit the linear regression. Let $j$ ranges from 1 to 100. Calculate and record the corresponding prediction error. 
+  * For each $j$ value, we also have the theoretical analysis of the testing error based on the lecture. In that analysis, we have the formula of both the Bias$^2$ and variance. Plug-in the simulated data to calculate the Bias$^2$ and use the theoretical value for the variance. 
+
+After finishing all simulation runs, plot your results using the `number of variables` as the x-axis, and the following 4 lines:
+
+  * The averaged prediction error based on your 200 simulation runs
+  * The averaged Bias$^2$ based on your 200 simulation runs
+  * The theoretical variance 
+  * The sum of Bias$^2$ + variance + Irreducible Error
+
+Does your simulation result match our theoretical analysis? Comment on your findings.
+
+### Answer
+The code and figure is shown below.
+```{r}
+library(matlib)
+
+set.seed(19)
+
+n = 300
+p = 100
+
+beta = vector(mode = "numeric", length = p)
+for (i in 1:p) {
+  beta[i] = 0.9^i
+}
+
+mse_vec = numeric(100)
+bias_vec = numeric(100)
+irr_err = numeric(100)
+variance = numeric(100)
+
+# for j = 1
+for (j in 1:p) {
+  mse = numeric(200)
+  bias = numeric(200)
+  for (k in 1:200) {
+    # generate covariate
+    X = matrix(rnorm(n*p), n, p)
+    # generate Y
+    Y_train = X %*% beta + rnorm(n)
+    Y_test = X %*% beta + rnorm(n)
+    
+    # simulation
+    beta_hat = qr.coef(qr(X[, 1:j]), Y_train)
+    Y_hat = X[, 1:j] %*% beta_hat
+    
+    # calculate MSE    
+    mse[k] = mean((Y_hat - Y_test)^2)
+    # calculate bias
+    hat_matrix = X[, 1:j] %*% chol2inv(chol(t(X[, 1:j]) %*% X[, 1:j])) %*% t(X[, 1:j])
+    mu = X %*% beta
+    bias[k] = sqrt(sum((mu - hat_matrix %*% mu)^2))
+  }
+  mse_vec[j] = mean(mse)
+  bias_vec[j] = mean(bias)
+  irr_err[j] = n
+  variance[j] = j
+}
+
+x = 1:100
+par(mar = c(5,5,2,5))
+
+plot(x, mse_vec, type="l", col="blue", lwd=2, ylim = c(0, 40), ylab = "", xlab = "Number of Variables")
+lines(x, bias_vec, type="l", col="blue", lty=2, lwd=2, xlab="")
+axis(2, col="blue",col.axis="blue")
+
+par(new=TRUE)
+plot(x, variance, type="l", col="red", lwd=2, axes=F, ylab = "", ylim = c(0, 300), xlab = "")
+lines(x, irr_err, type="l", col="red", lty=2, lwd=2)
+axis(4, col="red",col.axis="red")
+
+legend(80,150, legend=c("MSE", "Bias", "Variance", "IE"), col=c("blue", "blue", "red", "red"), lty=c(1,2,1,2), cex=0.8)
+```
+The simulation results shown in the figure match the theoretical analysis, which I will explain from two perspectives.
+Firstly, I will demonstrate the bias-variance tradeoff observed from the figure. The blue dash line and the red solid line show the bias term and variance term, respectively, and the blue solid line shows the prediction error (i.e., MSE). We can observe that with number of variables increasing, the bias term decreases and the variance term increases, and the MSE decreases at first and increases slightly when number of variables is beyond some point. This demonstrates that we cannot minimize both the bias and variance.
+Secondly, I will demonstrate that $\hat{\beta}$ regressed from ordinary least square algorithm is the best linear unbiased estimator (BLUE). Considering we have $p=100$ to generate the independent covariate, so if we use the 100 covariate to do the linear regression, we should theoretically have a BLUE. And indeed, when number of variables is 100, we can observe from the figure that the bias is almost zero, which demonstrates the BLUE.  
+
+## Question 2 [60 Points] Bitcoin price prediction
+
+For this question, we will use the [Bitcoin data]() provided on the course website. The data were posted originally on Kaggle ([link](https://www.kaggle.com/sudalairajkumar/cryptocurrencypricehistory?select=bitcoin_cash_price.csv)). Make sure that you read relevant information from the Kaggle website. Our data is the `bitcoin_dataset.csv` file. You should use a training/testing split such that your training data is constructed using only information up to 12/31/2016, and your testing data is constructed using only information starting from 01/01/2017. The goal of our analysis is to predict the `btc_market_price`. Since this is longitudinal data, we will use the information from previous days to predict the market price at a future day. In particular, on each calendar day (say, day 1), we use the information from three days onward (days 1, 2, and 3) to predict the market price on the 7th day. 
+
+Hence you need to first reconstruct the data properly to fit this purpose. This is mainly to put the outcome (of day 7) and the covariates (of the previous days) into the same row. Note that for this question, you may face issues such as missing data, categorical predictors, outliers, scaling issue, computational issue, and maybe others. Use your best judgment to deal with them. There is no general ``best answer''. Hence the grading will be based on whether you provided reasoning for your decision and whether you carried out the analysis correctly.
+
+### [15 Points] Data Construction
+
+Data pre-processing is usually the most time-consuming and difficult part of an analysis. We will use this example as a practice. Construct your data appropriately such that further analysis can be performed. Make sure that you consider the following:
+
+  * The data is appropriate for our analysis goal: each row contains the outcome on the seventh day and the covariates of the first three days
+  * Missing data is addressed (you can remove variable, remove observation, impute values or propose your own method)
+  * Process each single covariate/outcome by considering centering/scaling/transformation and/or removing outliers
+  
+For each of the above tasks, make sure that you **clearly document your choice**. In the end, provide a summary table/figure of your data. You can consider using boxplots, quantiles, histogram, or any method that is easy for readers to understand. You are required to pick one at least one method to present. 
+
+### Answer
+Firstly we find missing values in the dataset.
+```{r}
+library(glue)
+
+setwd("C:/Users/lidh9/Box Sync/STAT 542/Homeworks/HW3")
+dataset = read.csv(file = "bitcoin.csv")
+var_names = colnames(dataset)[2:24]
+col_names = character()
+for (name in var_names) {
+  for (i in 1:3) {
+    col_names = c(col_names, glue("{name}_{i}"))
+  }
+}
+
+# convert string to date
+# dataset[, 1] = as.Date(dataset[, 1], format="%Y-%m-%d %H:%M:%S")
+
+# check NA in each row
+for (j in 2:ncol(dataset)) {
+  sum_na = 0
+  na = is.na(dataset[, j])
+  sum_na = sum(na)
+  print(sum_na)
+}
+
+# NAs occur in column of btc_trade_volumn (5th col)
+# find locations of the NAs
+which(is.na(dataset[, 5]))
+```
+We can find that missing values occur in column of btc_trade_volumn (5th col) and their column numbers as well. We can see that there are six continuous missing values, which I decided to remove to address the missing values. As for the other distributed missing values, I determine to fill them with the previous value. 
+```{r}
+# remove row from 483 to 488
+data_rn = rbind(dataset[1:482,], dataset[489:nrow(dataset),])
+# fill the rest NAs
+for (i in 1:nrow(data_rn)) {
+  if (is.na(data_rn[i, 5]) == TRUE) {
+    data_rn[i, 5] = data_rn[i-1, 5]
+  }
+}
+```
+Now checking the outliers, the method I use is to plot each covariate and see whether there are extremely low or high values. Based on my observation, all the time series seems fine without extreme values, even though I found some series is highly skewed, i.e., begining with a very low value while going high in the future, such as the price of bitcoin. Since I consider such time series reflects the real trend of the bitcoin market, so here I didn't fix any outlier.
+```{r}
+# check outlier
+# generate plot for each covariate and save to local
+
+##### please uncomment the code below if you are about to generate the plots #####
+# for (j in 2:ncol(data_rn)) {
+#   jpeg(glue("./rplot{j}.jpg"))
+#   plot(data_rn[, j], type="l")
+#   dev.off()
+# }
+```
+After addressing the missing values and outliers, I reconstruct the data and scale them so that the observations are scaled in a same magnitude. The final variable "dataf" is the dataframe that is appropriate for regression. Each column has a name indicating which variable it is. For example, the column with name "btc_market_price" indicates it is time series of "btc_market_price" from the original dataset, in addition, the column with name "btc_market_price_1" means that it is the "btc_market_price" value in six days before, in other words, it is the 1st day value that you are using to predict the "btc_market_price" value in the same row.
+```{r}
+# reconstruct dataset
+# because some missing data is removed, I construct data from two parts: before-NA and after-NA
+# before NAs
+new_matrix = data_rn[1:482, 1:2]
+for (j in 2:ncol(data_rn)) {
+  var_matrix = matrix(0, 482, 3)
+  for (i in 7:482) {
+    var_matrix[i,1] = data_rn[i-6,j]
+    var_matrix[i,2] = data_rn[i-5,j]
+    var_matrix[i,3] = data_rn[i-4,j]
+  }
+  new_matrix = cbind(new_matrix, var_matrix)
+}
+# after NAs
+new_matrix_2 = cbind(dataset[489:nrow(dataset), 1], data_rn[483:nrow(data_rn), 2])
+for (j in 2:ncol(data_rn)) {
+  var_matrix = matrix(0, length(483:nrow(data_rn)), 3)
+  for (i in 483:nrow(data_rn)) {
+    var_matrix[i-482,1] = data_rn[i-6,j]
+    var_matrix[i-482,2] = data_rn[i-5,j]
+    var_matrix[i-482,3] = data_rn[i-4,j]
+  }
+  new_matrix_2 = cbind(new_matrix_2, var_matrix)
+}
+# combine them
+colnames(new_matrix_2) <- colnames(new_matrix)    # make them col name match
+data_new = rbind(new_matrix, new_matrix_2)     # merge them to have the complete matrix
+data_new = rbind(data_new[7:482,], data_new[489:nrow(data_new),])    # 1st piece start from 2010-03-01, 2nd piece start from 2011-07-02    
+colnames(data_new)[3:ncol(data_new)] <- col_names
+
+# center and scale the covariate
+X = data_new[, 2:ncol(data_new)]  
+# somehow the item becomes char, I need to convert to numeric at first
+for (i in 1:ncol(X)) {
+  storage.mode(X[,i]) <- "numeric"
+}
+X = scale(X)
+dataf = data.frame(X)    # dataframe for lm
+```
+At the end, to display the dataset, I plot each variable in the time series plot since I think the time series plot can give the most direct intuition of a time series dataset. Besides, I put a boxplot to show give the initial idea of the distribution of each variable.
+```{r}
+for (j in 2:ncol(data_rn)) {
+  plot(data_rn[, j], type="l", main = glue("{colnames(dataset)[j]}"))
+}
+boxplot(scale(data_rn[, 2:ncol(data_rn)]))
+```
+
+
+### [15 Points] Model Selection Criterion
+
+Use AIC and BIC criteria to select the best model and report the result from each of them. Use the forward selection for AIC and backward selection for BIC. Report the following two error quantities from **both training and testing data**. 
+
+  * The mean squared error: $n^{-1} \sum_{i}(Y_i - \widehat{Y}_i)^2$
+  * The proportion of explained variation ($R^2$): $1 - \frac{\sum_{i}(Y_i - \widehat{Y}_i)^2}{\sum_{i}(Y_i - \overline{Y}_i)^2}$
+
+Since these quantities can be affected by scaling and transformation, make sure that you **state any modifications applied to the outcome variable**. Compare the training data errors and testing data errors, which model works better? Provide a summary of your results. 
+
+### Answer
+```{r}
+# train-test split
+# id of y in 2016-12-31 is 2016, found from new_matrix_2 1st column
+# id of y in 2017-01-07 is 2023, found from new_matrix_2 1st column
+dataf_train = dataf[1:2016,]
+dataf_test = dataf[2023:nrow(dataf),]    # the dataframe includes y
+y_test = dataf_test[, 1]
+y_train = dataf_train[, 1]
+
+lmfit = lm(dataf_train$btc_market_price~., data = dataf_train)
+
+# calculate r squared
+rsq <- function(y, y_predict) {
+  rss = sum((y - y_predict)^2)
+  tss = sum((y - mean(y))^2)
+  return(1 - rss/tss)
+}
+
+# AIC
+fit_low = lm(dataf_train$btc_market_price ~ 1, data = dataf_train)
+AIC = step(fit_low, scope=list(upper=lmfit, lower=fit_low), direction="forward", k=2, trace=FALSE)
+beta_aic = AIC$coefficients    # first one is intercept
+aic_vars = names(beta_aic)    # names of selected variables, 1st is intercept
+y_predict_aic = data.matrix(dataf_test[, aic_vars[2:length(beta_aic)]]) %*% beta_aic[2:length(beta_aic)] + rep(beta_aic[1], nrow(dataf_test))
+y_train_aic = data.matrix(dataf_train[, aic_vars[2:length(beta_aic)]]) %*% beta_aic[2:length(beta_aic)] + rep(beta_aic[1], nrow(dataf_train))
+mse_aic = c(mean((y_train - y_train_aic)^2), mean((y_test - y_predict_aic)^2))
+rsq_aic = c(rsq(y_train, y_train_aic), rsq(y_test, y_predict_aic))
+
+# BIC
+n = nrow(dataf_train)
+BIC = step(lmfit, direction="backward", k = log(n), trace = FALSE)
+beta_bic = BIC$coefficients    # first one is intercept
+bic_vars = names(beta_bic)    # names of selected variables, 1st is intercept
+y_predict_bic = data.matrix(dataf_test[, bic_vars[2:length(beta_bic)]]) %*% beta_bic[2:length(beta_bic)] + rep(beta_bic[1], nrow(dataf_test))
+y_train_bic = data.matrix(dataf_train[, bic_vars[2:length(beta_bic)]]) %*% beta_bic[2:length(beta_bic)] + rep(beta_bic[1], nrow(dataf_train))
+mse_bic = c(mean((y_train - y_train_bic)^2), mean((y_test - y_predict_bic)^2))
+rsq_bic = c(rsq(y_train, y_train_bic), rsq(y_test, y_predict_bic))
+
+# print
+print("***********************AIC************************")
+print(glue("training dataset: MSE is {mse_aic[1]}, RSQ is {rsq_aic[1]}"))
+print(glue("testing dataset:  MSE is {mse_aic[2]}, RSQ is {rsq_aic[2]}"))
+print("***********************BIC************************")
+print(glue("training dataset: MSE is {mse_bic[1]}, RSQ is {rsq_bic[1]}"))
+print(glue("testing dataset:  MSE is {mse_bic[2]}, RSQ is {rsq_bic[2]}"))
+```
+It is observed that the model selected by BIC has smaller prediction error (MSE) and higher R square (RSQ), which indicates that the model under BIC performs better. Note that the dataset has been centered and scaled using scale() function.
+
+### [15 Points] Best Subset Selection
+
+Fit the best subset selection to the dataset and report the best model of each model size (up to 7 variables, excluding the intercept) and their prediction errors. Make sure that you simplify your output so that it only presents the essential information. If the algorithm cannot handle this many variables, then consider using just day 1 and 2 information. 
+
+### Answer
+```{r}
+library(leaps)
+x = as.matrix(X[, 2:ncol(X)])
+y = as.matrix(X[, 1])
+
+rss_vec = vector(mode="numeric")
+for (i in 0:6) {
+  RSSleaps=regsubsets(x, y, nvmax=i, really.big=TRUE)
+  sumleaps=summary(RSSleaps,matrix=T)
+  rss_vec = c(rss_vec, sumleaps$rss[length(sumleaps$rss)])
+  which_matrix = sumleaps$which
+  print("******************************************")
+  print(glue("model size {i+1} selected variable: {names(which(which_matrix[nrow(which_matrix),]))}"))
+  print(glue("RSS: {sumleaps$rss[length(sumleaps$rss)]}"))
+}
+```
+The simplified outputs are printed, showing the selected variable with the specified model size, as well as its residual sum of squares (RSS), which I use to refer to the model error of each model size.
+
+### [15 Points] KNN
+
+Use KNN to perform this prediction task. Do you expect KNN to perform better or worse than the linear model, and why? Does the analysis result match your intuition? Report your model fitting results.
+
+### Answer
+Based on the analytical derivation, the linear regression should perform better than kNN. Because the formula of linear regression is derived through minimizing the $n \times MSE$, i.e., $(y - \mathbf{X} \beta)^T (y - \mathbf{X})$. The following code demonstrates the guess. I tried $k=1:100$ and find the minimum MSE is $3.22$, which is larger than the MSE of linear regression model we examined in the "Model Selection Criterion" part.
+```{r}
+xtrain = as.matrix(dataf_train[, 2:ncol(dataf_train)])
+xtest = dataf_test[, 2:ncol(dataf_test)]
+ytrain = dataf_train[, 1]
+ytest = dataf_test[, 1]
+
+mse = vector(mode = "numeric")
+for (k in 1:100) {
+  yknn = FNN::knn.reg(train = xtrain, test = xtest, y = ytrain, k = k)
+  mse = c(mse, mean((ytest-yknn$pred)^2))
+}
+print(glue("Testing MSE under best kNN is {min(mse)}."))
+print(glue("Testing MSE under AIC Liner regression is {mse_aic[2]}."))
+print(glue("Testing MSE under BIC Liner regression is {mse_bic[2]}."))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+
+
+
+

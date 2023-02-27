@@ -1,0 +1,298 @@
+---
+title: 'STAT 542: Homework 2'
+author: "Donghui Li"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+  knitr::opts_chunk$set(echo = TRUE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '50%', fig.align = "center")
+  knitr::opts_chunk$set(tidy.opts=list(width.cutoff=80), tidy=TRUE)
+  options(width = 90)
+```
+
+```{css, echo=FALSE}
+.solution {
+background-color: #e6ffe6;
+}
+```
+
+## Question 1 [20 Points] KNN Classification (Diabetes)
+
+Load the Pima Indians Diabetes Database (`PimaIndiansDiabetes`) from the `mlbench` package. If you don't already have this package installed, use the following code. It also randomly split the data into training and testing. You should preserve this split in the analysis. 
+
+```{r}
+  # install.packages("mlbench") # run this line if you don't have the package
+  library(mlbench)
+  data(PimaIndiansDiabetes)
+
+  set.seed(2)
+  trainid = sample(1:nrow(PimaIndiansDiabetes), nrow(PimaIndiansDiabetes)/2)
+  Diab.train = PimaIndiansDiabetes[trainid, ]
+  Diab.test = PimaIndiansDiabetes[-trainid, ]
+```
+
+Read the documentation of this dataset [here](https://cran.r-project.org/web/packages/mlbench/mlbench.pdf) and make sure that you understand the goal of this classification problem. 
+
+Use a grid of $k$ values (every integer) from 1 to 20. Fit the KNN model using `Diab.train` and calculate both training and testing errors. For the testing error, use `Diab.test`. Plot the two errors against the corresponding $k$ values. Make sure that you differentiate them using different colors/shapes and add proper legends. Does the plot match (approximately) our intuition of the bias-variance trade-off in terms of having an U-shaped error? What is the optimal $k$ value based on this result?
+
+### Answer
+Code for this question is shown below.
+We can observe from the figure that the training error increases with $k$ while testing error decreases with $k$, which is consistent with the bias-variance trade-off. The optimal $k$ would be $11$, where training error rate has the same value to testing error. In this case, both bias and variance are in acceptable level and the sum of them is the smallest.
+```{r}
+library(mlbench)
+library(class)
+library(dplyr)
+data(PimaIndiansDiabetes)
+
+# Prepare dataset
+set.seed(2)
+trainid = sample(1:nrow(PimaIndiansDiabetes), nrow(PimaIndiansDiabetes)/2)
+data_train = PimaIndiansDiabetes[trainid, ]
+data_test = PimaIndiansDiabetes[-trainid, ]
+train_predictor <- select(data_train, "pregnant", "glucose", "pressure", "triceps", "insulin", "mass", "pedigree", "age")
+test_predictor <- select(data_test, "pregnant", "glucose", "pressure", "triceps", "insulin", "mass", "pedigree", "age")
+cl <- data_train[, "diabetes"]
+
+# knn
+train_errors <- numeric(length = 20)
+test_errors <- numeric(length=20)
+for (k in 1:20) {
+  pred <- knn(train_predictor, test_predictor, cl, k)
+  pred2 <- knn(train_predictor, train_predictor, cl, k)
+  train_errors[k] <- mean(data_train[, "diabetes"] != pred2)
+  test_errors[k] <- mean(data_test[, "diabetes"] != pred)
+}
+
+# plot
+x <- 1:20
+plot(x, train_errors, type = "l", xlab = "k", ylab = "Error Rate", ylim = c(0, max(test_errors)), col="blue", lwd=3)
+lines(x, test_errors, type="l", col="red", lwd=3)
+legend(x="bottomright", legend = c("Train Errors", "Test Errors"), col = c("blue", "red"), pch=15)
+```
+
+## Question 2 [20 Points] KNN Classification (Handwritten Digit)
+
+Load the Handwritten Digit Data (`zip.train` and `zip.test`) from the `ElemStatLearn` package. Use a grid of $k$ values (every integer) from 1 to 20. Fit the KNN model using **a randomly selected subset of `zip.train`, with size 500** as the training data and calculate both training and testing errors. Make sure to set random seed so that your result can be replicated. Plot the two errors against the corresponding $k$ values. Make sure that you differentiate them using different colors/shapes and add proper legends. What is the optimal $k$ value? Does the plot match our intuition of the bias-variance trade-off in terms of having an U-shaped error? If not, which theoretical result we introduced in the lecture can be used to explain it? Provide your explanation of the results. 
+
+### Answer
+The code and plot is shown below. The optimal $k$ is $1$. In the figure, both training error and testing error increase with $k$, meaning that the intuition of bias-variance trade-off is not observed. The possible explanation to it is under-fitting. Considering the size of the dataset. The testing dataset contains $2007$ samples, i.e., $2007$ rows from original matrix. By contrast, the randomly selected training dataset only contains $500$ samples, which is far less than the test data size. Therefore, the under-fitting occurs under this circumstance.
+```{r}
+library(ElemStatLearn)
+set.seed(24)
+data_train_raw <- zip.train
+data_test <- zip.test
+data_train <- data_train_raw[sample(nrow(data_train_raw), size=500, replace=FALSE), ]    # randomly select 500 training data
+
+# knn
+train_errors <- numeric(length = 20)
+test_errors <- numeric(length=20)
+for (k in 1:20) {
+  pred <- knn(data_train, data_test, data_train[, 1], k)
+  pred2 <- knn(data_train, data_train, data_train[, 1], k)
+  train_errors[k] <- mean(pred2 != data_train[,1])
+  test_errors[k] <- mean(pred != data_test[,1])
+}
+
+x <- 1:20
+plot(x, train_errors, type = "l", xlab = "k", ylab = "Error Rate", ylim = c(0, max(test_errors)), col="blue", lwd=3)
+lines(x, test_errors, type="l", col="red", lwd=3)
+legend(x="bottomright", legend = c("Train Errors", "Test Errors"), col = c("blue", "red"), pch=15)
+```
+
+## Question 3 [40 Points] Write your own KNN for regression
+
+For this question, you __cannot__ use (load) any additional `R` package. Complete the following steps. 
+
+a. [30 points] Generate the covariate of $n = 1000$ training data, with $p=5$ from independent standard Normal distribution. Then, generate $Y$ from 
+  $$ Y = X_1 + 0.5 \times X_2 - X_3 + \epsilon,$$
+  with i.i.d. standard normal error $\epsilon$. Write a function `myknn(xtest, xtrain, ytrain, k)` that fits a KNN model and predict multiple target points `xtest`. Here `xtrain` is the training dataset covariate value, `ytrain` is the training data outcome, and `k` is the number of nearest neighbors. Use the euclidean distance to evaluate the closeness between two points. 
+  
+  Test your code using the first 500 observations as the training data and the rest as testing data. Predict the $Y$ values using your KNN function with `k = 5`. Evaluate the prediction accuracy using mean squared error
+$$\frac{1}{N}\sum_i (y_i - \widehat y_i)^2$$
+### Answer  
+The r code and $MSE$ is shown below. 
+```{r}
+cal_distance <- function(vec1, vec2) {
+  # function to calculate Euclidean distance between two points, i.e., vectors
+  
+  return(sqrt(sum((vec1 - vec2) ^ 2)))
+}
+
+cal_mse <- function(vec1, vec2) {
+  # function to calculate mse
+  
+  return(mean((vec1 - vec2)^2))
+}
+
+get_neighbors <- function(vec, vec_pool, k) {
+  # function to get k nearest points from vec_pool to the vec
+  # vec_pool: a matrix of vectors, with each row as a point
+  # vec: given point 
+  # return a vector of row numbers of the k nearest vectors
+  
+  row_no = nrow(vec_pool)    # get number of rows in matrix
+  dis_vec = numeric(length = row_no)
+  for (i in 1:row_no) {
+    distance = cal_distance(vec, vec_pool[i,])
+    dis_vec[i] = distance
+  }
+  
+  sort_index = sort(dis_vec, index.return=TRUE)$ix
+  k_near_index = sort_index[1:k]
+  return(k_near_index)
+}
+
+myknn <- function(xtest, xtrain, ytrain, k) {
+  # return ytest: vector
+  
+  yhat = numeric(length = nrow(xtest))
+  for (i in 1:nrow(xtest)) {
+    k_near_index = get_neighbors(xtest[i,], xtrain, k)
+    point_pred = mean(ytrain[k_near_index])
+    yhat[i] = point_pred
+  }
+  return(yhat)
+}
+
+# Generate sample
+set.seed(10)
+n = 1000
+p = 5
+X = matrix(rnorm(n*p, 0, 1), n, p)
+Y = X[,1] + 0.5*X[,2] - X[,3] + rnorm(n)
+
+# split train test
+train_id = 1:500
+test_id = 501:n
+xtrain = X[train_id,]
+ytrain = Y[train_id]
+xtest = X[test_id,]
+
+# knn regression
+k = 1
+yhat = myknn(xtest, xtrain, ytrain, k)
+mse = cal_mse(yhat, Y[test_id])
+print(mse)
+```
+
+b. [10 Points] Consider $k$ being all integers from 1 to 10. Use the degrees of freedom as the horizontal axis. Demonstrate your results in a single, easily interpretable figure with proper legends. What is your optimal tuning parameter and the associated degrees of freedom?
+
+### Answer
+The code and figure can be found below.  
+For kNN regression, I use the approximate calculation of degree of freedom: $df = \frac{n}{k}$. Plotting the $MSE$ calculated from training dataset and testing dataset against degree of freedom, as shown in the following figure. It can be observed that the optimal parameter $k=10$, indicating the degree of freedom as $50$.
+```{r}
+# for question b
+train_mses = numeric(length = 10)
+test_mses = numeric(length = 10)
+df = numeric(length = 10)
+
+for (k in 1:10) {
+  yhat = myknn(xtest, xtrain, ytrain, k)
+  yhat_train = myknn(xtrain, xtrain, ytrain, k)
+  test_mses[k] = cal_mse(yhat, Y[test_id])
+  train_mses[k] = cal_mse(yhat_train, Y[train_id])
+  df[k] = 500 / k
+}
+
+plot(df, test_mses, type = "b", col="red", lwd="2", xlab = "Degree of Freedom", ylab = "MSE", ylim=c(0,max(test_mses)))
+lines(df, train_mses, type = "b", col="blue", lwd="2")
+legend("topleft", legend=c("Test MSE", "Train MSE"), col=c("red", "blue"), lty=1:2, cex=0.8)
+```
+
+# Question 4 [20 Points] Curse of Dimensionality
+
+Let's consider a high-dimensional setting. Keep the model the same as question 3. We consider two cases that both generate an additional set of 95 covariates:
+
+  * Generate another 95-dimensional covariate with all independent standard Gaussian entries
+  * Generate another 95-dimensional covariate using the formula $X^T A$, where $X$ is the original 5-dimensional vector, and $A$ is a $5 \times 95$ dimensional (fixed) matrix that remains the same for all observations. 
+  
+  You should generate $A$ only once using i.i.d. uniform $[0, 1]$ entries. Make sure that you set seed when generating these covariates. Fit KNN in both settings (with the total of 100 covariates) and select the best $k$ value. Answer the following questions
+
+  * For each setting, what is the best $k$ and the best mean squared error for prediction?
+  * In which setting $k$NN performs better? Should this be expected? Why?
+  
+### Answer  
+Please note that the kNN algorithm I used here is the my_knn from question 3, therefore, to run the code below, it is needed to firstly load my defined functions from question 3.
+The code and result for setting 1 is as below. 
+For setting 1. A U-shape is observed and it can be determined that the best $k$ is $15$, with the best $MSE$ is $2.51$.
+```{r}
+# For question 4
+# Case 1
+set.seed(10)
+n = 1000
+p = 5
+X = matrix(rnorm(n*p, 0, 1), n, p)
+Y = X[,1] + 0.5*X[,2] - X[,3] + rnorm(n)
+
+# split train test
+train_id = 1:500
+test_id = 501:n
+
+X1 = matrix(rnorm(n*95, 0, 1), n, 95)
+Xb1 = cbind(X, X1)    # big matrix X1
+xtrain = Xb1[train_id,]
+ytrain = Y[train_id]
+xtest = Xb1[test_id,]
+
+# run knn
+k_set = c(1:20, 30, 40, 50, 60, 70, 80, 90, 100, 200, 300, 400, 500)
+test_mses = numeric(length = length(k_set))
+df = numeric(length = length(k_set))
+i = 0
+for (k in k_set) {
+  i = i+1
+  yhat = myknn(xtest, xtrain, ytrain, k)
+  test_mses[i] = cal_mse(yhat, Y[test_id])
+  df[i] = 500 / k
+}
+plot(k_set, test_mses, type = "b", col="red", lwd="2", xlab = "Number of k", ylab = "MSE")
+
+# best k
+result = sort(test_mses, index.return=TRUE)
+result[1]
+result$ix
+```
+Similarly, the code and result for setting 2 is as below. For setting 2, the best $k$ is $6$, with the best $MSE$ as $1.56$.
+```{r}
+# Case 2
+set.seed(10)
+A = matrix(runif(5*95, 0, 1), 5, 95)
+X2 = X %*% A
+Xb2 = cbind(X, X2)    # big matrix X2
+xtrain <- Xb2[train_id,]
+ytrain <- Y[train_id]
+xtest <- Xb2[test_id,]
+# run knn
+k_set = c(1:20, 30, 40, 50, 60, 70, 80, 90, 100, 200, 300, 400, 500)
+test_mses = numeric(length = length(k_set))
+df = numeric(length = length(k_set))
+i = 0
+for (k in k_set) {
+  i = i+1
+  yhat = myknn(xtest, xtrain, ytrain, k)
+  test_mses[i] = cal_mse(yhat, Y[test_id])
+  df[i] = 500 / k
+}
+plot(k_set, test_mses, type = "b", col="red", lwd="2", xlab = "Number of k", ylab = "MSE")
+
+# best k
+result2 = sort(test_mses, index.return=TRUE)
+result2[1]
+result2$ix
+```
+If we look at the best $MSE$, the setting 2 kNN performs better. It can be expected, because in setting 1, the 100-dimensional covariate is generated from independent standard normal distribution, which means that the dimension of the dataset is $p=100$. While the sample size $1000$ is small comparing to the dimension. Therefore, the issue of curse of dimensionality occurs. By contrast, in setting 2, only 5 covariate are generated from independent standard normal distribution while another 95 dimension of data is generated from the 5 covariate, in other words, the 100 covariate are dependent, so that the dimension $p<<100$, which prevents the issue of curse of dimensionality. 
+
+
+
+

@@ -1,0 +1,209 @@
+---
+title: 'STAT 542: Homework 11'
+author: "FALL 2020, by Donghui Li (donghui3)"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+  knitr::opts_chunk$set(echo = TRUE)
+  knitr::opts_chunk$set(cache = TRUE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '80%', fig.align = "center")
+  options(width = 90)
+```
+
+```{css, echo=FALSE}
+.solution {
+background-color: #e6ffe6;
+}
+```
+
+## About HW11
+
+We continue the SVM example from HW10 to perform linear and nonlinear classification using the penalized loss framework. Both questions are based on the following logistic loss function:
+$$L(y, f(x)) = \log(1 + e^{- y f(x)}).$$
+The rest of the job is to solve this optimization problem if given the functional form of $f(x)$. To do this, we will utilize a general-purpose optimization package/function. For example, in `R`, you can use the `optim()` function. Read the documentation of this function (or equivalent ones in Python) and set up the objective function properly to solve for the parameters. If you need an example of how to use the `optim` function, read the corresponding part in the example file provided on our course website [here](https://teazrq.github.io/stat542/other/r-intro.html) (Section 10). 
+
+## Question 1 [50 Points] Linear SVM
+
+When $f(x)$ is a linear function, SVM can be solved by optimizing the penalized loss:$$ \underset{\beta_0, \beta}{\arg\min} \sum_{i=1}^n L(y_i, \beta_0 + x_i^T \beta) + \lambda \lVert \beta \rVert^2$$You should generate the data using the code provided below code (or write similar code in Python), and answer these questions:
+
+  * Write a function to define the penalized loss objective function. The R function `optim()` can run faster if you further define the gradient function. Hence, you should also define the gradient function properly and implement it in the optimization. 
+  * Choose a reasonable $\lambda$ value so that your optimization can run properly. In addition, I recommend using the `BFGS` method in optimization. 
+  * After solving the optimization problem, plot all data and the decision line
+  * If needed, modify your $\lambda$ so that the model fits reasonably well and re-plot. You don't have to tune $\lambda$ as long as you obtain a reasonable decision line.
+  * Report your training error. 
+
+```{r fig.width=6, fig.height=6, out.width = '50%', fig.align = "center"}
+  set.seed(20)
+  n = 100 # number of data points for each class
+  p = 2 # dimension
+
+  # Generate the positive and negative examples
+  xpos <- matrix(rnorm(n*p,mean=0,sd=1),n,p)
+  xneg <- matrix(rnorm(n*p,mean=1.5,sd=1),n,p)
+  x <- rbind(xpos,xneg)
+  y <- c(rep(-1, n), rep(1, n))
+    
+  plot(x,col=ifelse(y>0,"darkorange", "deepskyblue"), pch = 19, xlab = "x1", ylab = "x2")
+  legend("topleft", c("Positive","Negative"), col=c("darkorange", "deepskyblue"), 
+         pch=c(19, 19), text.col=c("darkorange", "deepskyblue"))
+```
+
+## Answer
+The code and results are shown below:
+```{r}
+set.seed(20)
+n = 100 # number of data points for each class
+p = 2 # dimension
+
+# Generate the positive and negative examples
+xpos <- matrix(rnorm(n*p,mean=0,sd=1),n,p)
+xneg <- matrix(rnorm(n*p,mean=1.5,sd=1),n,p)
+x <<- rbind(xpos,xneg)
+y <- c(rep(-1, n), rep(1, n))
+
+# objective function
+f <- function(b) {
+  # b[1]=b1, b[2]=b2, b[3]=b0
+  
+  my_sum = 0
+  for (i in 1:nrow(x)) {
+    my_sum = my_sum + log(1 + exp(-y[i] * (b[3] + t(as.matrix(x[i,])) %*% as.matrix(c(b[1], b[2])))))
+  }
+  return(my_sum + lambda* (b[1]^2 + b[2]^2))
+}
+
+g <- function(b) {
+  s1 = 0
+  s2 = 0
+  s3 = 0
+  for (i in 1:nrow(x)) {
+    s1 = s1 + (-y[i] * x[i,1] * exp(-y[i] * (b[3] + t(as.matrix(x[i,])) %*% as.matrix(c(b[1], b[2]))))) / (1 + exp(-y[i] * (b[3] + t(as.matrix(x[i,])) %*% as.matrix(c(b[1], b[2]))))) + 2*lambda * b[1]
+    s2 = s2 + (-y[i] * x[i,2] * exp(-y[i] * (b[3] + t(as.matrix(x[i,])) %*% as.matrix(c(b[1], b[2]))))) / (1 + exp(-y[i] * (b[3] + t(as.matrix(x[i,])) %*% as.matrix(c(b[1], b[2]))))) + 2*lambda * b[2]
+    s3 = s3 + (-y[i] * exp(-y[i] * (b[3] + t(as.matrix(x[i,])) %*% as.matrix(c(b[1], b[2]))))) / (1 + exp(-y[i] * (b[3] + t(as.matrix(x[i,])) %*% as.matrix(c(b[1], b[2])))))
+  }
+  return(c(s1, s2, s3))
+}
+
+b0 = c(0,0,0)
+lambda <<- 0.1
+result = optim(b0, f, g, method = "BFGS")
+# result = optim(b0, f, method = "BFGS")
+b = result$par
+
+plot.new()
+plot(x,col=ifelse(y>0,"darkorange", "deepskyblue"), pch = 19, xlab = "x1", ylab = "x2")
+legend("topleft", c("Positive","Negative"), col=c("darkorange", "deepskyblue"), 
+       pch=c(19, 19), text.col=c("darkorange", "deepskyblue"))
+abline(a= -b[3]/b[2], b=-b[1]/b[2], col="black", lty=1, lwd = 2)
+abline(a= (-b[3]-1)/b[2], b=-b[1]/b[2], col="black", lty=3, lwd = 2)
+abline(a= (-b[3]+1)/b[2], b=-b[1]/b[2], col="black", lty=3, lwd = 2)
+```
+The misclassification error is:
+```{r}
+final = c()
+for (i in 1:nrow(x)) {
+  new_i = ifelse((t(as.matrix(x[i,])) %*% as.matrix(c(b[1], b[2])) + b[3])>0, 1, -1)
+  new_j = ifelse(new_i==y[i], TRUE, FALSE)
+  final = c(final, new_j)
+}
+final = cbind(final)
+error_rate = 1- sum(final)/length(final)
+print(error_rate)
+```
+
+## Question 2 [50 Points] Non-linear SVM
+
+You should generate the data using the code provided below code (or write similar code in Python), and answer these questions:
+    + Use the kernel trick to solve for a nonlinear decision rule. Consider using the penalized optimization of the following form: 
+$$\sum_{i=1}^n L(y_i, \mathbf{w}^T K_i) + \lambda \mathbf{w}^T K \mathbf{w}$$
+where $K_i$ is the $i$th column of the $n \times n$ kernel matrix $K$, and the $(i,j)$th entry of $K$ is $K(x_i, x_j)$, for any two sample points. For this problem, we consider $K(\cdot, \cdot)$ as the Gaussian kernel. For the bandwidth of the kernel function, you can borrow ideas from our previous homework. You do not have to optimize the bandwidth.
+
+  * Pre-calculate the $n \times n$ kernel matrix $K$ of the observed data.
+  * Write a function to define the objective function. You should also define the gradient function properly and implement it in the optimization. 
+  * Choose a reasonable $\lambda$ value so that your optimization can run properly. 
+  * It could be difficult to obtain the decision line itself. However, its relatively easy to obtain the fitted label. Hence, calculate the fitted label (in-sample prediction) of your model and report the classification error. 
+  * Plot the data using the fitted labels. This would allow you to visualize (approximately) the decision line. If needed, modify your $\lambda$ so that the model fits reasonably well and re-plot. You don't have to tune $\lambda$ as long as your result is reasonable. You can judge if your model is reasonable based on the true model. 
+
+```{r fig.width=6, fig.height=6, out.width = '50%', fig.align = "center"}
+  set.seed(1)
+  n = 400
+  p = 2 # dimension
+
+  # Generate the positive and negative examples
+  x <- matrix(runif(n*p), n, p)
+  side <- (x[, 2] > 0.5 + 0.3*sin(3*pi*x[, 1]))
+  y <- sample(c(1, -1), n, TRUE, c(0.9, 0.1))*(side == 1) + sample(c(1, -1), n, TRUE, c(0.1, 0.9))*(side == 0)
+  
+  plot(x,col=ifelse(y>0,"darkorange", "deepskyblue"), pch = 19, xlab = "x1", ylab = "x2")
+  legend("topleft", c("Positive","Negative"), 
+       col=c("darkorange", "deepskyblue"), pch=c(19, 19), text.col=c("darkorange", "deepskyblue"))
+```
+
+## Answer
+The code and results are shown below. Please note that I plot the original dataset and prediction in the same subplot to show the difference.
+```{r}
+set.seed(1)
+n = 400
+p = 2 # dimension
+
+# Generate the positive and negative examples
+x <- matrix(runif(n*p), n, p)
+side <- (x[, 2] > 0.5 + 0.3*sin(3*pi*x[, 1]))
+y <- sample(c(1, -1), n, TRUE, c(0.9, 0.1))*(side == 1) + sample(c(1, -1), n, TRUE, c(0.1, 0.9))*(side == 0)
+
+k_band = 1.06*sqrt(3)/6*n^(-1/5)
+K = matrix(0, n ,n)
+for(i in 1:n) {
+  for(j in 1:n){
+    K[i, j] = exp(-sum((x[i, ]-x[j, ])^2) / (k_band^2))
+  }
+}
+
+f <- function(b, K, x, y, lambda) {
+  L = 0
+  for(i in 1:n) {
+    L = L + log(1 + exp(-y[i]*t(K[, i]) %*% b))
+  }
+  L = L + lambda * t(b) %*% K %*% b
+  return(L)
+}
+
+g <- function(b, K, x, y, lambda) {
+  s = 0
+  for(i in 1:n) {
+    s = s + (-y[i]) * exp(-y[i]*(t(K[, i]) %*% b)) / (1 + exp(-y[i]*(t(K[, i]) %*% b))) * K[, i]
+  }
+  s = s + 2*lambda * t(K) %*% b
+  return(s)
+}
+
+lambda = 0.1
+b0 = rep(1, n)
+result = optim(b0, f, g, K=K, x=x, y=y, lambda=lambda, method='BFGS')
+b = result$par
+y_pred = ifelse(t(K) %*% b > 0, 1, -1)
+error_rate = 1 - sum(y_pred == y)/n
+
+
+par(mfrow=c(1,2))
+plot(x,col=ifelse(y>0,"darkorange", "deepskyblue"), pch = 19, xlab = "x1", ylab = "x2", main="Original")
+legend("topleft", c("Positive","Negative"), 
+       col=c("darkorange", "deepskyblue"), pch=c(19, 19), text.col=c("darkorange", "deepskyblue"))
+
+plot(x,col=ifelse(y_pred > 0,"darkorange", "deepskyblue"), pch = 19, xlab = "x1", ylab = "x2", main="Prediction")
+
+print(paste("The classfication error is: ", error_rate))
+```
+
+

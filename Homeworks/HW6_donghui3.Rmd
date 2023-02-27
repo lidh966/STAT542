@@ -1,0 +1,281 @@
+---
+title: 'STAT 542: Homework 6'
+author: "FALL 2020, by Donghui Li (donghui3)"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+  knitr::opts_chunk$set(echo = TRUE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '80%', fig.align = "center")
+  options(width = 90)
+```
+
+```{css, echo=FALSE}
+.solution {
+background-color: #e6ffe6;
+}
+```
+
+## About HW6
+
+This is a relatively light homework. The main purpose is to understand how the spline basis is constructed. We will use the `Ozone` data from the `mlbench` package. Univariate analysis is considered in Q1a, while multivariate analysis is considered in Q1b. 
+
+# Question 1 [100 Points] Write Your Own Spline Basis
+
+We will fit and compare different spline models to the `Ozone` dataset form the `mlbench` package. The dataset is already ordered by date, and we will use this index as the $x$ variable, named as `time`. 
+
+```{r fig.width = 12}
+  library(mlbench)
+  data(Ozone)
+  
+  set.seed(10)
+  # Wind will only be used for b)
+  mydata = data.frame("time" = seq(1:nrow(Ozone))/nrow(Ozone), "ozone" = Ozone$V4, "wind" = Ozone$V6)
+  
+  trainid = sample(1:nrow(Ozone), 250)
+  train = mydata[trainid, ]
+  test = mydata[-trainid, ]
+  par(mfrow=c(1,2))
+  
+  plot(train$time, train$ozone, pch = 19, cex = 0.5)
+  plot(train$wind, train$ozone, pch = 19, cex = 0.5)
+```
+
+## a. [80 points] Univariate Spline Fit
+
+Let's consider several different spline methods to model the `ozone` level using `time`. To test your model, use the train/test split provided above. If you use Python, please generate your split with the same mechanism and save your seed. Use the mean squared error as the metric for evaluation and report it for each method. For the basis that you write with your own code, make sure to include the intercept term. For each method, produce a figure consists of training data, testing data and your fitted curve.
+
+  (i) Write your own code (you cannot use `bs()` or similar functions) to implement a continuous piecewise linear fitting. Pick 3 knots using your own judgment.
+
+### Answer
+Please note that for all the questions, I haven't processed the missing values because they can be handled in the lm() function and thus do no harm to the regression and prediction.
+The knots that I pick is: $0.2$, $0.4$ and $0.6$. The code and results are as follows:
+```{r}
+library(mlbench)
+data(Ozone)
+
+# Wind will only be used for b)
+mydata = data.frame("time" = seq(1:nrow(Ozone))/nrow(Ozone), "ozone" = Ozone$V4, "wind" = Ozone$V6)
+
+trainid = sample(1:nrow(Ozone), 250)
+train = mydata[trainid, ]
+test = mydata[-trainid, ]
+# par(mfrow=c(1,2))
+
+# plot(train$time, train$ozone, pch = 19, cex = 0.5)
+# plot(train$wind, train$ozone, pch = 19, cex = 0.5)
+
+pos <- function(x) x*(x>0)
+
+# piecewise linear fitting
+myknots = c(0.2, 0.4, 0.6)
+bounds = c(min(train$time), max(train$time))
+mybasis = cbind("h1"=1,
+                "h2"=mydata$time,
+                "h3"=pos(mydata$time - myknots[1]),
+                "h4"=pos(mydata$time - myknots[2]),
+                "h5"=pos(mydata$time - myknots[3]))
+
+df_new = data.frame(cbind("ozone"=mydata$ozone, mybasis))
+df_train = df_new[trainid, ]
+df_test = df_new[-trainid, ]
+
+lmfit = lm(df_train$ozone ~ .-1, data=df_train)
+pre_train = predict(lmfit, newdata=df_train)
+pre_test = predict(lmfit, newdata=df_test)
+
+# plot
+df_train_pre = data.frame(cbind("time"=df_train$h2, "ori"=df_train$ozone, "fit"=pre_train))
+df_train_pre = df_train_pre[order(df_train_pre$time),]
+plot(train$time, train$ozone, pch=19, cex=0.5)
+points(test$time, test$ozone, pch=19, cex=0.5, col="green")
+lines(df_train_pre$time, df_train_pre$fit, type="l", col="red", lwd="3")
+legend("topleft", c("train", "test", 'spline'), col=c("black", "green", "red"), lty=c(NA, NA, 1), lwd="3", pch=c(19,19,NA))
+
+se = (pre_test - test$ozone)^2
+se = se[!is.na(se)]
+mse = mean(se)
+print(paste("MSE is", mse))
+```
+
+  (ii) Write your own code to implement a quadratic spline fitting. Your spline should be continuous up to the first derivative. Pick 4 knots using your own judgment.
+  
+### Answer
+The knots that I pick is 0.2, 0.4, 0.5, 0.7. The code and results are shown as below:
+```{r}
+# quadratic spline
+myknots = c(0.2, 0.4, 0.5, 0.7)
+bounds = c(min(train$time), max(train$time))
+mybasis = cbind(
+  "h1" = 1,
+  "h2" = mydata$time,
+  "h3" = (mydata$time)^2,
+  "h4" = (pos(mydata$time - myknots[1]))^2,
+  "h5" = (pos(mydata$time - myknots[2]))^2,
+  "h6" = (pos(mydata$time - myknots[3]))^2,
+  "h7" = (pos(mydata$time - myknots[4]))^2
+)
+
+df_new = data.frame(cbind("ozone"=mydata$ozone, mybasis))
+df_train = df_new[trainid, ]
+df_test = df_new[-trainid, ]
+
+lmfit = lm(df_train$ozone ~ .-1, data=df_train)
+pre_train = predict(lmfit, newdata=df_train)
+pre_test = predict(lmfit, newdata=df_test)
+
+# for plot
+df_train_pre = data.frame(cbind("time"=df_train$h2, "ori"=df_train$ozone, "fit"=pre_train))
+df_train_pre = df_train_pre[order(df_train_pre$time),]
+plot(train$time, train$ozone, pch=19, cex=0.5, xlab="Time", ylab="Ozone")
+points(test$time, test$ozone, pch=19, cex=0.5, col="green")
+lines(df_train_pre$time, df_train_pre$fit, type="l", col="red", lwd="3")
+legend("topleft", c("train", "test", 'spline'), col=c("black", "green", "red"), lty=c(NA, NA, 1), lwd="3", pch=c(19,19,NA))
+
+se = (pre_test - test$ozone)^2
+se = se[!is.na(se)]
+mse = mean(se)
+print(paste("MSE is", mse))
+```
+
+  (iii) Produce a same set of basis as (ii) using the `bs()` function. Note that they do not have to be exactly the same as yours. Verify (figure out how) that the column spaces are the same. 
+
+### Answer  
+Suppose the basis produced using `bs()` function is $V=[V_1, V_2, V_3, V_4, V_5, V_6, V_7]$ and my quadratic basis is $W=[W_1, W_2, W_3, W_4, W_5, W_6, W_7]$. The basic idea is that if each column vector of $V$ or $W$ can be written as the linear combination of all column vectors of the other basis matrix, then we can conclude that the two basis matrix share the same column spaces. I will use an example for demonstration. Let's say I'm examining whether $V_1$ can be linearly represented by all column vectors of $W$, which is to determine whether the $x$ exists for the linear equations $Wx=V_1$. Next, I get the augmented matrix $Z=[W,V_1]$ and obtain the row echelon form of $Z$. Since $Z$ is overdetermined, $x$ exists in the linear equations if and only if starting from row 8, the last two columns of $Z$ are both 0 or both 1. If $x$ exists, then $V_1$ can be linearly represented by columns of $W$. And doing similar examination to each $V_i$ and $W_i$. The results show that the column spaces are the same. The code is shown as follows:
+```{r}
+# using bs()
+library(splines)
+library(pracma)
+bs_bas = bs(mydata$time, knots=myknots, degree=2, intercept=TRUE)
+
+for (j in 1:7) {
+  ab = cbind(mybasis, bs_bas[,j])
+  z = rref(ab)
+  print(sum((z[8, 7:8])))
+}
+
+for (j in 1:7) {
+  ab = cbind(bs_bas, mybasis[,j])
+  z = rref(ab)
+  print(sum((z[8, 7:8])))
+}
+```
+
+  (iv) Use existing functions (e.g. `ns()`)to implement a natural cubic spline with 6 knots. Choose your own knots.
+  
+### Answer
+The knots that I pick is $0.1, 0.2, 0.4, 0.5, 0.6, 0.8$. The code and results are shown below:
+```{r}
+# using ns()
+library(splines)
+myknots = c(0.1, 0.2, 0.4, 0.5, 0.6, 0.8)
+ns_basis = ns(mydata$time, knots=myknots, intercept=TRUE)
+
+df_new = data.frame(cbind("ozone"=mydata$ozone, ns_basis))
+df_train = df_new[trainid, ]
+df_test = df_new[-trainid, ]
+
+lmfit = lm(df_train$ozone ~ .-1, data=df_train)
+pre_train = predict(lmfit, newdata=df_train)
+pre_test = predict(lmfit, newdata=df_test)
+
+# for plot
+df_train_pre = data.frame(cbind("time"=mydata$time[trainid], "ori"=df_train$ozone, "fit"=pre_train))
+df_train_pre = df_train_pre[order(df_train_pre$time),]
+plot(train$time, train$ozone, pch=19, cex=0.5, col="black")
+points(test$time, test$ozone, pch=19, cex=0.5, col="green")
+lines(df_train_pre$time, df_train_pre$fit, type="l", col="red", lwd="3")
+legend("topleft", c("train", "test", 'spline'), col=c("black", "green", "red"), lty=c(NA, NA, 1), lwd="3", pch=c(19,19,NA))
+
+se = (pre_test - test$ozone)^2
+se = se[!is.na(se)]
+mse = mean(se)
+print(paste("MSE is", mse))
+```
+
+  (v) Use existing functions to implement a smoothing spline. Use the built-in generalized cross-validation method to select the best tuning parameter.  
+  
+### Answer
+The code and results are shown below:
+```{r}
+# smooth spline
+x_ori = train$time
+y_ori = train$ozone
+na_index = which(is.na(y_ori))
+x = x_ori[-na_index]
+y = y_ori[-na_index]
+
+ss_fit = smooth.spline(x, y, cv=FALSE)
+pre_train = predict(ss_fit, x=train$time)
+pre = predict(ss_fit, x=test$time)
+
+# plot
+df_train_pre = data.frame("time"=pre_train$x, "ozone"=pre_train$y)
+df_train_pre = df_train_pre[order(df_train_pre$time),]
+plot(train$time, train$ozone, pch=19, cex=0.5, col="black")
+points(test$time, test$ozone, pch=19, cex=0.5, col="green")
+lines(df_train_pre$time, df_train_pre$ozone, type="l", col="red", lwd="3")
+legend("topleft", c("train", "test", 'spline'), col=c("black", "green", "red"), lty=c(NA, NA, 1), lwd="3", pch=c(19,19,NA))
+
+se = (pre$y - test$ozone)^2
+se = se[!is.na(se)]
+mse = mean(se)
+print(paste("MSE is", mse))
+```
+
+
+## b. [20 points] Multivariate Spline Fit With Additive Structure
+
+Consider using both `time` and `wind` as the covariate. Use the additive model structure, with continuous piecewise linear for time and quadratic spline for wind. Both should be done using the code you developed previously. Pick your number of knots, but no more than 5. Fit and predict the `ozone` outcome and report the prediction error. 
+
+### Answer
+Knots for piecewise linear is $0.2, 0.4, 0.6$, and those for quadratic basis is $2, 5$. The code and results are shown below:
+```{r}
+# piecewise linear
+myknots_t = c(0.2, 0.4, 0.6)
+mybasis_lin = cbind(
+  "int" = 1,
+  "t1" = mydata$time,
+  "t2" = pos(mydata$time - myknots_t[1]),
+  "t3" = pos(mydata$time - myknots_t[2]),
+  "t4" = pos(mydata$time - myknots_t[3])
+)
+
+# quadratic
+myknots_w = c(2, 5)
+mybasis_qua = cbind(
+  "w1" = mydata$wind,
+  "w2" = (mydata$wind)^2,
+  "w3" = (pos(mydata$wind - myknots_w[1]))^2,
+  "w4" = (pos(mydata$wind - myknots_w[2]))^2
+)
+
+df = data.frame(cbind("ozone"=mydata$ozone, mybasis_lin, mybasis_qua))
+df_train = df[trainid, ]
+df_test = df[-trainid, ]
+
+lm_fit = lm(df_train$ozone ~ .-1, data=df_train)
+test_pre = predict(lm_fit, newdata = df_test)
+
+se = (test_pre - test$ozone)^2
+se = se[!is.na(se)]
+mse = mean(se)
+print(paste("MSE is", mse))
+```
+
+
+
+
+
+
+

@@ -1,0 +1,381 @@
+---
+title: 'STAT 542: Homework 5'
+author: "FALL 2020, by Donghui Li (donghui3)"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+  knitr::opts_chunk$set(echo = TRUE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '80%', fig.align = "center")
+  knitr::opts_chunk$set(cache = TRUE)
+  options(width = 90)
+```
+
+```{css, echo=FALSE}
+.solution {
+background-color: #e6ffe6;
+}
+```
+
+## About HW5
+
+We utilize the coordinate descent algorithm introduced in the class with the one variable Lasso algorithm from the last homework to complete the entire Lasso solution. This involves two steps: in the first step, we solve the solution for a fixed $\lambda$ value, while in the second step, we consider a grid of $\lambda$ value and solve it using the path-wise coordinate descent. 
+
+## Question 1 [40 Points] Lasso solution for fixed $\lambda$
+
+For this question, you cannot use functions from any additional library in your algorithm. Following HW4, we use the this version of the objective function: 
+
+$$\arg\min_{\beta} \frac{1}{2n} \lVert \mathbf{y} - \mathbf{X}\beta \rVert^2 + \lambda \lVert \beta \rVert_1$$
+The following data is used to fit this model. Note that the `MASS` package can only be used to generate multivariate normal data. You can consider using similar functions in Python if needed. 
+
+```{r}
+  library(MASS)
+  set.seed(10)
+  n = 100
+  p = 200
+  
+  # generate data
+  V = matrix(0.3, p, p)
+  diag(V) = 1
+  X_org = as.matrix(mvrnorm(n, mu = rep(0, p), Sigma = V))
+  true_b = c(runif(10, -1, 1), rep(0, p-10))
+  y_org = X_org %*% true_b + rnorm(n)
+
+  # pre-scale and center X and y
+  X = scale(X_org)*sqrt(n/(n-1))
+  y = scale(y_org)*sqrt(n/(n-1))
+  lambda = 0.3
+```
+
+We will use the pre-scale and centered data `X` and `y` for this question, hence no intercept is needed. Write a Lasso algorithm function `myLasso(X, y, lambda, tol, maxitr)` which will output a vector of $\beta$ values **without** the intercept. You need to consider the following while completing this question:
+
+  * Do not use functions from any additional library
+  * Start with a vector $\boldsymbol \beta = \mathbf{0}$
+  * Use the soft-threshold function you developed in HW4. 
+  * Use the efficient $\mathbf{r}$ update algorithm we introduced during the lecture.
+  * Run your coordinate descent algorithm for a maximum of `maxitr` = 100 iterations (while each iteration will loop through all variables). However, stop your algorithm if the $\boldsymbol \beta$ value of the current iteration is sufficiently similar to the previous one, i.e., $\lVert \boldsymbol \beta^{(k)} - \boldsymbol \beta^{(k-1)} \rVert^2 \leq \text{tol}$. Set `tol = 1e-7`.
+  * After running the algorithm, print out the first 10 variables.
+  * Finally, check and compare your answer to the `glmnet` package using the following code:
+  
+```{r}
+  library(glmnet)
+  glmnetfit = glmnet(X, y, lambda = 0.3, intercept = FALSE)
+  glmnetfit$beta[1:10]
+```
+
+### Answer
+The code and result of myLasso is as follows:
+```{r}
+library(MASS)
+set.seed(10)
+n = 100
+p = 200
+
+# generate data
+V = matrix(0.3, p, p)
+diag(V) = 1
+X_org = as.matrix(mvrnorm(n, mu = rep(0, p), Sigma = V))
+true_b = c(runif(10, -1, 1), rep(0, p-10))
+y_org = X_org %*% true_b + rnorm(n)
+
+# pre-scale and center X and y
+X = scale(X_org)*sqrt(n/(n-1))
+y = scale(y_org)*sqrt(n/(n-1))
+lambda = 0.3
+
+# soft-threshold
+soft_th <- function(b, lambda) {
+  # b: OLS for b_j, a number
+  
+  if (b > lambda) {
+    b_lasso = b - lambda
+  }
+  else if (abs(b) <= lambda) {
+    b_lasso = 0
+  }
+  else {
+    b_lasso = b + lambda
+  }
+  return(b_lasso)
+}
+
+# mylasso
+myLasso <- function(X, y, lambda, tol, maxitr) {
+  if (!is.matrix(X)) stop("x must be a matrix")
+  if (nrow(X) != length(y)) stop("number of observations different")
+  
+  # initialize beta values
+  b = list()
+  b0 = rep(0, ncol(X))
+  b1 = b0
+  
+  for (k in 1:maxitr) {
+    b0 = b1    
+    
+    # j = 1
+    r_new = y - X[, -1, drop = FALSE] %*% b1[-1, drop=FALSE]
+    b_ols = t(X[, 1] %*% r_new) / (t(X[, 1]) %*% X[, 1])
+    b1[1] = soft_th(b_ols, lambda)
+    
+    # j > 1
+    for (j in 2:ncol(X)) {
+      r_new = r_new - X[, j-1] * b1[j-1] + X[, j] * b1[j]
+      b_ols = t(X[, j] %*% r_new) / (t(X[, j]) %*% X[, j])
+      b1[j] = soft_th(b_ols, lambda)
+    }
+    
+    b[[k]] = b1
+    
+    # decide if stop
+    if (sum((b1-b0)^2) < tol) {
+      break
+    }
+  }
+  
+  if (k == maxitr) {
+    print("maximum iteration reached!")
+  }
+  
+  return(list("all_b"=b, "beta"=b1))
+}
+
+tol = 1e-7
+maxitr = 100
+result = myLasso(X, y, lambda, tol, maxitr)
+# print out the first 10 vars
+print(result$beta[1:10])
+```
+Print the answer from `glmnet`:
+```{r}
+library(glmnet)
+glmnetfit = glmnet(X, y, lambda = 0.3, intercept = FALSE)
+print(glmnetfit$beta[1:10])
+```
+We can observe that `myLasso` returns the same results to the `glmnet`.
+
+## Question 2 [40 Points] Path-wise Coordinate Descent
+
+Let's modify our Lasso code to perform path-wise coordinate descent. The idea is simple: we will solve the solution on a grid of $\lambda$ values, starting from the largest one. After obtaining the optimal $\boldsymbol \beta$ for a given $\lambda$, we simply use this solution as the initial value (instead of all zero) for the next (smaller) $\lambda$. This is referred to as a warm start in optimization problems. For more details, please watch the lecture video. We will consider the following grid of $\lambda$, with the `glmnet` solution of the first 10 variables plotted. 
+
+```{r}
+  glmnetfit = glmnet(X, y, intercept = FALSE)
+  lambda_all = glmnetfit$lambda
+
+  matplot(t(glmnetfit$beta[1:10, ]), type = "l", xlab = "Lambda Index", ylab = "Estimated Beta")
+```
+
+You need to add an additional input argument `lambda_all` to your Lasso function. After finishing your algorithm, output a matrix that records all the fitted parameters on your $\lambda$ grid. 
+
+  * Provide a plot same as the above `glmnet` solution plot of the first 10 variables. 
+  * Which two variables entering (start to have nonzero values) the model first?
+  * What is the maximum discrepancy between your solution and `glmnet`? 
+
+### Answer
+The code is shwon below:
+```{r}
+# soft-threshold
+soft_th <- function(b, lambda) {
+  # b: OLS for b_j, a number
+  
+  if (b > lambda) {
+    b_lasso = b - lambda
+  }
+  else if (abs(b) <= lambda) {
+    b_lasso = 0
+  }
+  else {
+    b_lasso = b + lambda
+  }
+  return(b_lasso)
+}
+
+# mylasso
+myLasso <- function(X, y, b0, lambda, tol, maxitr) {
+  if (!is.matrix(X)) stop("x must be a matrix")
+  if (nrow(X) != length(y)) stop("number of observations different")
+  
+  # initialize beta values
+  b = list()
+  b1 = b0
+  
+  for (k in 1:maxitr) {
+    b0 = b1    
+    
+    # j = 1
+    r_new = y - X[, -1, drop = FALSE] %*% b1[-1, drop=FALSE]
+    b_ols = t(X[, 1] %*% r_new) / (t(X[, 1]) %*% X[, 1])
+    b1[1] = soft_th(b_ols, lambda)
+    
+    # j > 1
+    for (j in 2:ncol(X)) {
+      r_new = r_new - X[, j-1] * b1[j-1] + X[, j] * b1[j]
+      b_ols = t(X[, j] %*% r_new) / (t(X[, j]) %*% X[, j])
+      b1[j] = soft_th(b_ols, lambda)
+    }
+    
+    b[[k]] = b1
+    
+    # decide if stop
+    if (sum((b1-b0)^2) < tol) {
+      break
+    }
+  }
+  
+  if (k == maxitr) {
+    print("maximum iteration reached!")
+  }
+  
+  return(b1)
+}
+
+# mylasso path
+myLassoPath <- function(X, y, lambda_all, tol, maxitr) {
+  lambda_all = sort(lambda_all, decreasing = TRUE)
+  result = myLasso(X, y, rep(0, ncol(X)), lambda_all[1], tol, maxitr)
+  b_matrix = as.matrix(result)
+  for (i in 2:length(lambda_all)) {
+    b0 = b_matrix[, i-1]
+    result = myLasso(X, y, b0, lambda_all[i], tol, maxitr)
+    b_matrix = cbind(b_matrix, result)
+  }
+  
+  return(b_matrix)
+}
+
+
+library(MASS)
+set.seed(10)
+n = 100
+p = 200
+
+# generate data
+V = matrix(0.3, p, p)
+diag(V) = 1
+X_org = as.matrix(mvrnorm(n, mu = rep(0, p), Sigma = V))
+true_b = c(runif(10, -1, 1), rep(0, p-10))
+y_org = X_org %*% true_b + rnorm(n)
+
+# pre-scale and center X and y
+X = scale(X_org)*sqrt(n/(n-1))
+y = scale(y_org)*sqrt(n/(n-1))
+lambda = 0.3
+
+glmnetfit = glmnet(X, y, intercept = FALSE)
+lambda_all = glmnetfit$lambda
+
+# matplot(t(glmnetfit$beta[1:10, ]), type = "l", xlab = "Lambda Index", ylab = "Estimated Beta", col=1:10)
+
+# my pathwise
+tol = 1e-7
+maxitr = 1000
+b_matrix = myLassoPath(X, y, lambda_all, tol, maxitr)
+```
+Plot the first 10 variables as follow. Note that the legend "$i$" shows the $i$th variable. We can observe that $\beta_1$ and $\beta_9$ are the first two entering variables.
+```{r}
+name = c("1","2","3","4","5","6","7","8","9","10")
+matplot(t(b_matrix[1:10,]), type="l", xlab = "Lambda Index", ylab="Estimated Beta")
+```
+I define the discrepancy as the L1 norm difference between the first 10 coefficients. Plot the discrepancy as follows. The maximum discrepancy occurs at the $\beta_5$ in the last iteration of $\lambda$.
+```{r}
+dif = abs(glmnetfit$beta[1:10, ] - b_matrix[1:10,])
+matplot(t(dif), type = "l", xlab = "Lambda Index", ylab = "discrepancy")
+```
+
+
+
+## Question 3 [20 Points] Recovering the Original Scale
+
+The formula provided in HW4 can also be used when there are multiple variables. 
+
+$$
+\begin{aligned}
+\frac{Y - \bar{Y}}{\text{sd}_y} =&~ \sum_{j=1}^p \frac{X_j - \bar{X}_j}{\text{sd}_j} \gamma_j \\
+Y =&~ \underbrace{\bar{Y} - \sum_{j=1}^p \bar{X}_j \frac{\text{sd}_y \cdot \gamma_j}{\text{sd}_j}}_{\beta_0} + \sum_{j=1}^p X_j \underbrace{\frac{\text{sd}_y \cdot \gamma_j}{\text{sd}_j}}_{\beta_j},
+\end{aligned}
+$$
+Use this formula to recover the original scale of the $\boldsymbol \beta$, including the intercept term $\beta_0$. 
+
+  * Use the following code of `glmnet` to obtain a solution path. 
+  * After recovering your $\boldsymbol \beta$ values, produce a plot of your solution path. 
+  * What is the maximum discrepancy between your solution and `glmnet`?
+  * [Bonus 5 Points] If we do not specify `lambda` in the following `glmnet()` function, the package will pick a different grid, which lead to a different set of solution. Explain how the `lambda` values are picked in this case. What is the largest `lambda` being considered? and why we don't need to consider a larger `lambda` value? Consider reading the following paper (section 2.5) and the documentation of the `glmnet()` function at the CRAN website. However, please note that the descriptions from these two sources are slightly different, with similar ideas.
+      + Friedman, Jerome, Trevor Hastie, and Rob Tibshirani. "Regularization paths for generalized linear models via coordinate descent." Journal of statistical software 33, no. 1 (2010): 1.
+
+```{r}
+  glmnetfit2 = glmnet(X_org, y_org, lambda = lambda_all*sd(y_org)*sqrt(n/(n-1)))
+  lassobeta2 = coef(glmnetfit2)[2:11, ]
+  matplot(t(as.matrix(coef(glmnetfit2)[2:11, ])), type = "l", xlab = "Lambda Index", ylab = "Estimated Beta")
+```
+
+### Answer
+Recovering $\beta$ values and plot the solution path of $\beta_1$ to $\beta_{10}$ using the following code:
+```{r}
+sdy = sd(y_org)
+sdx = vector(mode="numeric", length = ncol(X_org))
+for (j in 1:ncol(X_org)) {
+  sdx[j] = sd(X_org[, j])
+}
+
+# recover betaj
+beta_matrix = matrix(0, nrow=200, ncol=100)
+for (k in 1:100) {
+  for (j in 1:200) {
+    beta_matrix[j,k] = sdy/sdx[j] * b_matrix[j,k]
+  }
+}
+
+# recover beta0
+beta0_matrix = vector(mode="numeric", length = 100)
+for (k in 1:100) {
+  beta0 = mean(y_org)
+  for (j in 1:200) {
+    beta0 = beta0 - mean(X_org[, j]) * sdy/sdx[j] * b_matrix[j, k]
+    beta0_matrix[k] = beta0
+  }
+}
+
+# combine original beta
+beta_org = rbind(beta0_matrix, beta_matrix)
+matplot(t(beta_org[2:11,]), type="l", xlab = "Lambda Index", ylab="Estimated Beta")
+```
+I define the discrepancy as the L1 norm difference between the first 10 coefficients. Plot the discrepancy as follows. The maximum discrepancy occurs at the $\beta_5$ in the last iteration of $\lambda$.
+```{r}
+glmnetfit2 = glmnet(X_org, y_org, lambda = lambda_all*sd(y_org)*sqrt(n/(n-1)))
+lassobeta2 = coef(glmnetfit2)[2:11, ]
+# matplot(t(as.matrix(coef(glmnetfit2)[2:11, ])), type = "l", xlab = "Lambda Index", ylab = "Estimated Beta")
+dif = abs(coef(glmnetfit2)[2:11, ] - beta_org[2:11,])
+matplot(t(dif), type = "l", xlab = "Lambda Index", ylab = "discrepancy")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

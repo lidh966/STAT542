@@ -1,0 +1,246 @@
+---
+title: 'STAT 542: Homework 9'
+author: "FALL 2020, by Donghui Li (donghui3)"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+  knitr::opts_chunk$set(echo = TRUE)
+  knitr::opts_chunk$set(cache = TRUE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '80%', fig.align = "center")
+  options(width = 90)
+```
+
+```{css, echo=FALSE}
+.solution {
+background-color: #e6ffe6;
+}
+```
+
+## About HW9
+
+In this homework we will extend the the Gaussian mixture model in the lecture note to a two-dimensional case, where both the mean and variance are unknown. Again, by using the EM algorithm, we face two steps, the E-step that calculates the conditional expectation of the likelihood, and the M-step that update the $\boldsymbol\theta$ estimates. One nontrivial step is to derive analytic solution of $\boldsymbol\theta$ in the M-step, which involves some matrix calculation and tricks. Some hints are provided. Finally, we will implement the method using our own code. 
+
+## Question 1 [100 Points] A Two-dimensional Gaussian Mixture Model
+
+__If you do not use latex to type your answer, you will lose 2 points__. We consider another example of the EM algorithm, which fits a Gaussian mixture model to the Old Faithful eruption data. The data is provided at the course website. For a demonstration (and **partial solution**) of this problem, see the figure provided on [Wikipedia](https://en.wikipedia.org/wiki/Expectation%E2%80%93maximization_algorithm). As a result, we will use the formula to implement the EM algorithm and obtain the distribution parameters of the two underlying Gaussian distributions. Here is a visualization of the data:
+
+```{r fig.height = 5, fig.width = 6, out.width = '50%', fig.align = "center"}
+  # load the data
+  # load("..\\data\\faithful.rda")
+  # plot(faithful, pch = 19)
+```
+
+We use both variables `eruptions` and `waiting`. The plot above shows that there are two eruption patterns (clusters). Hence, we use a hidden Bernoulli random variable $Z_i \sim \text{Bern}(\pi)$ to indicate which pattern an observed eruption falls into. The corresponding distribution of `eruptions` and `waiting` can be described by a two-dimensional Gaussian --- either $N(\boldsymbol \mu_1, \boldsymbol \Sigma_1)$ or $N(\boldsymbol \mu_2, \boldsymbol \Sigma_2)$ --- depending on the outcome of $Z_i$. Here, the collection of parameters is $\boldsymbol \theta = \{\boldsymbol \mu_1, \boldsymbol \Sigma_1, \boldsymbol \mu_2, \boldsymbol \Sigma_2, \pi\}$, and we want to use the EM algorithm to estimate them.
+
+#### Part a) [20 Points] The E-Step
+
+Based on the above assumption of eruption patterns, write down the full log-likelihood $\ell(\mathbf{x}, \mathbf{z} | \boldsymbol \theta)$. In the E-step, we need the conditional expectation 
+
+$$g(\boldsymbol \theta | \boldsymbol \theta^{(k)}) = E_{\mathbf{Z} | \mathbf{x}, \boldsymbol \theta^{(k)}}[\ell(\mathbf{x}, \mathbf{Z} | \boldsymbol \theta)].$$ 
+
+Provide the formulation of the above function. If you do not know where to start, then the answer is already provided on the Wikipedia page. Derive the conditional expectation ($p_i$) of $\mathbf{Z}$ given $\mathbf{x}$ and $\boldsymbol \theta^{(k)}$, using notations in our lecture. 
+
+#### Answer
+Similar to notations in the lecture, I use $\phi_1(\boldsymbol x)$ and $\phi_2( \boldsymbol x )$ to denote the density of $N(\boldsymbol \mu_1, \boldsymbol \Sigma_1)$ and $N(\boldsymbol \mu_2, \boldsymbol \Sigma_2)$, respectively. Besides, to clarify the indication: $\mathbf{X_i} | \mathbf{Z_i}=0 \sim N(\boldsymbol \mu_1, \boldsymbol \Sigma_1)$ and $\mathbf{X_i} | \mathbf{Z_i}=1 \sim N(\boldsymbol \mu_2, \boldsymbol \Sigma_2)$. $P_{\mathbf{Z}}(z_i=1)=\pi$ and $P_{\mathbf{Z}}(z_i=0)= 1-\pi$.  
+
+The complete likelihood function is $L(\boldsymbol x, z | \boldsymbol \theta) = \displaystyle \prod_{i=1}^{n} [\phi_1(\boldsymbol x_i)]^{1-z_i} [\phi_2(\boldsymbol x_i)]^{z_i} \pi^{z_i} (1-\pi)^{1-z_i}$.  
+Therefore, the log likelihood is: 
+$$
+\begin{aligned}
+l(\boldsymbol x, z | \boldsymbol \theta) =&~ \sum_{i=1}^{n} [ (1-z_i) \ln \phi_1(\boldsymbol x_i) + z_i \ln \phi_2(\boldsymbol x_i) + (1-z_i) \ln(1-\pi) + z_i \ln(\pi) ] \\
+=&~ \sum_{i=1}^{n} \{ (1-z_i)[-\frac{1}{2} (\boldsymbol x_i - \boldsymbol \mu_1)^T \boldsymbol \Sigma_1^{-1} (\boldsymbol x_i - \boldsymbol \mu_1) - \frac{1}{2} \ln |\boldsymbol \Sigma_1| - \ln(2\pi)]   \} \\
++&~ \sum_{i=1}^{n} \{ z_i [-\frac{1}{2} (\boldsymbol x_i - \boldsymbol \mu_2)^T \boldsymbol \Sigma_2^{-1} (\boldsymbol x_i - \boldsymbol \mu_2) - \frac{1}{2} \ln |\boldsymbol \Sigma_2| - \ln(2\pi)]   \} \\
++&~ \sum_{i=1}^{n} [(1-z_i)\ln (1-\pi) + z_i \ln(\pi)]
+\end{aligned}
+$$
+During the E-Step, we assume $\mathbf{X}$, $\boldsymbol \theta$ are known, then we have:
+$$
+\begin{aligned}
+P(Z_i=1 | \boldsymbol x, \boldsymbol \theta) =&~ \frac{P(Z_i=1, \boldsymbol x_i | \boldsymbol \theta)}{P(\boldsymbol x_i | \boldsymbol \theta)} \\
+=&~ \frac{P(Z_i=1, \boldsymbol x_i | \boldsymbol \theta)}{P(Z_i=1, \boldsymbol x_i | \boldsymbol \theta) + P(Z_i=0, \boldsymbol x_i | \boldsymbol \theta)} \\
+=&~ \frac{\pi \phi_2(\boldsymbol x_i)}{\pi \phi_1(\boldsymbol x_i) + (1-\pi) \phi_2(\boldsymbol x_i)} \\
+\triangleq&~ \hat{p_i}
+\end{aligned}
+$$
+Similarly, $P(Z_i=0 | \boldsymbol x, \boldsymbol \theta) = 1 - \hat{p}$.
+Then we have: 
+$$
+\begin{aligned}
+g(\boldsymbol \theta | \boldsymbol \theta^{(k)}) =&~ E_{\mathbf{Z} | \mathbf{x}, \boldsymbol \theta^{(k)}}[\ell(\mathbf{x}, \mathbf{Z} | \boldsymbol \theta)] \\
+=&~ P(Z_i=1 | \boldsymbol x_i, \boldsymbol \theta) l(\boldsymbol x,z| \boldsymbol \theta) + P(Z_i=0 | \boldsymbol x_i, \boldsymbol \theta) l(\boldsymbol x,z| \boldsymbol \theta) \\
+=&~ \sum_{i=1}^{n} \hat{p_i} \{ -\frac{1}{2} (\boldsymbol x_i - \boldsymbol \mu_2)^T \boldsymbol \Sigma_2^{-1} (\boldsymbol x_i - \boldsymbol \mu_2) - \frac{1}{2} \ln |\boldsymbol \Sigma_2| - \ln(2\pi) + \ln(\pi) \} \\
++&~ \sum_{i=1}^{n} (1 - \hat{p_i}) \{ -\frac{1}{2} (\boldsymbol x_i - \boldsymbol \mu_1)^T \boldsymbol \Sigma_1^{-1} (\boldsymbol x_i - \boldsymbol \mu_1) - \frac{1}{2} \ln |\boldsymbol \Sigma_1| - \ln(2\pi) + \ln(1-\pi) \}
+\end{aligned}
+$$
+
+#### Part b) [30 Points] The M-Step
+
+[10 points] Once we have $g(\boldsymbol \theta | \boldsymbol \theta^{(k)})$, the M-step is to re-calculate the maximum likelihood estimators of $\boldsymbol \mu_1$, $\boldsymbol \Sigma_1$, $\boldsymbol \mu_2$, $\boldsymbol \Sigma_2$ and $\pi$. Again the answer was already provided on Wikipedia. However, you need to provide a derivation of these estimators. __Hint__: by taking the derivative of the objective function with respect to the parameters, the proof involves three tricks: 
+
+  + $\text{Trace}(\beta^T \Sigma^{-1}\beta) = \text{Trace}(\Sigma^{-1}\beta \beta^T)$
+  + $\frac{\partial}{\partial A} \log |A| = A^{-1}$
+  + $\frac{\partial}{\partial A} \text{Trace}(BA) = B^T$
+  
+#### Answer
+In the M-Step, it's simply an optimization problem:
+$$\boldsymbol \theta^{(k+1)} = \arg\max_{\boldsymbol \theta} g(\boldsymbol \theta | \boldsymbol \theta^{(k)})$$.
+Firstly, to obtain $\boldsymbol \mu_1$, we take partial derivative with respect to $\boldsymbol \mu_1$:
+$$
+\begin{aligned}
+\frac{\partial g}{\partial \boldsymbol \mu_1} =&~ \sum_{i=1}^{n} \frac{\partial}{\partial \boldsymbol \mu_1} \{(1-\hat{p_i} ) [-\frac{1}{2} (\boldsymbol x_i - \boldsymbol \mu_1)^T \boldsymbol \Sigma_1^{-1} (\boldsymbol x_i - \boldsymbol \mu_1)] \} \\
+=&~ \sum_{i=1}^{n} (1-\hat{p_i})(\boldsymbol x_i - \boldsymbol \mu_1)
+\end{aligned}
+$$
+Let $\frac{\partial g}{\partial \boldsymbol \mu_1}=\boldsymbol 0$, we can obtain:
+$$\hat{\boldsymbol \mu_1} = \frac{\sum_{i=1}^{n}(1-\hat{p_i}) \boldsymbol x_i}{\sum_{i=1}^{n}(1-\hat{p_i})}$$.
+Similarly, we can obtain:
+$$\hat{\boldsymbol \mu_2} = \frac{\sum_{i=1}^{n}\hat{p_i} \boldsymbol x_i}{\sum_{i=1}^{n}\hat{p_i}}$$.  
+Next, we use estimated $\boldsymbol \mu$ to estimate $\boldsymbol \Sigma$. Similarly, taking derivative with respective to $\boldsymbol \Sigma_1$ at first:  
+$$
+\begin{aligned}
+\frac{\partial g}{\partial \boldsymbol \Sigma_1} =&~ \sum_{i=1}^{n} \frac{\partial}{\partial \boldsymbol \Sigma_1} (1-p_i) \{-\frac{1}{2} (\boldsymbol x_i - \boldsymbol \mu_1)^T \boldsymbol \Sigma_1^{-1}(\boldsymbol x_i - \boldsymbol \mu_1) - \frac{1}{2} \ln |\boldsymbol \Sigma_1| \} \\
+=&~ \sum_{i=1}^{n} \{ (1-p_i) \frac{\partial}{\partial \boldsymbol \Sigma_1}  \{-\frac{1}{2} Trace[(\boldsymbol x_i - \boldsymbol \mu_1)^T \boldsymbol \Sigma_1^{-1}(\boldsymbol x_i - \boldsymbol \mu_1)] \} + \frac{\partial}{\partial \boldsymbol \Sigma_1} ( \frac{1}{2} \ln |\boldsymbol \Sigma_1^{-1}| ) \} \\
+=&~ \sum_{i=1}^{n} \{ (1-p_i) \frac{\partial}{\partial \boldsymbol \Sigma_1}  \{-\frac{1}{2} Trace[\boldsymbol \Sigma_1^{-1}(\boldsymbol x_i - \boldsymbol \mu_1) (\boldsymbol x_i - \boldsymbol \mu_1)^T] \} + \frac{\partial}{\partial \boldsymbol \Sigma_1} ( \frac{1}{2} \ln |\boldsymbol \Sigma_1^{-1}| ) \} \\
+=&~ \sum_{i=1}^{n} (1-p_i) [-\frac{1}{2} (\boldsymbol x_i-\boldsymbol \mu_1)^T(\boldsymbol x_i- \boldsymbol \mu_1) + \frac{1}{2} \boldsymbol \Sigma_1 ]
+\end{aligned}
+$$
+Let $\frac{\partial g}{\partial \boldsymbol \Sigma_1} = \boldsymbol 0$, we can obtain:
+$$\hat{\boldsymbol \Sigma_1} = \frac{ \sum_{i=1}^n (1-\hat{p_i})(\boldsymbol x_i-\boldsymbol \mu_1)^T (\boldsymbol x_i - \boldsymbol \mu_1)}{\sum_{i=1}^{n} (1-\hat{p_i})}$$.
+Similarly, we have:
+$$\hat{\boldsymbol \Sigma_2} = \frac{ \sum_{i=1}^n \hat{p_i}(\boldsymbol x_i-\boldsymbol \mu_2)^T (\boldsymbol x_i - \boldsymbol \mu_2)}{\sum_{i=1}^{n} \hat{p_i}}$$.
+Similarly, we can obtain $\hat{\pi}$ by solving the partial derivative with respect to $\pi$ as $\boldsymbol 0$, which gives:  
+$$\hat{\pi}=\frac{1}{n} \sum_{i=1}^{n} \hat{p_i}$$.
+
+
+#### Part c) [50 Points] Implementing the Algorithm
+
+Implement the EM algorithm using the formula you just derived. Make sure that the following are addressed:
+  
+  * [5 Points] You need to give a reasonable initial value such that the algorithm converges. 
+  * [10 Points] Make sure that you give proper comment on each step to clearly indicate which quantity the code is calculating.
+  * [5 Points] Set up a convergence criteria under which the iteration stops.
+  * [10 Points] Record the result (all the parameter estimates) for each iteration. Report the final parameter estimates.
+  * [10 Points] Make four plots to demonstrate the fitted model and the updating process: your initial values, the first iteration, the second iteration, and the final results. The plots should intuitively demonstrate the fitted Gaussian distributions. For ideas of the plot, refer to the animation on the Wikipedia page or the code given below. 
+  * You may use other packages to calculate the Gaussian densities.
+  
+#### Answer
+Firstly before setting up the initial value, two clusters can be observed from the plot. Roughly estimating the mean and deviation of the two clusters yield a reasonable initial value, as can be found in the following code.  
+Next I define the stopping criteria, I create a vector to record each value in the parameter set $\boldsymbol \theta$ by order, and after each iteration, I compare the new $\boldsymbol \theta^{(k+1)}$ and current $\boldsymbol \theta^{(k)}$ by calculating the Mean Square Error (MSE) between them, if MSE is less than a pre-specified number `epsilon`, e.g., `epsilon=0.0001` in my homework, then the iteration is considered convergent.  
+The code and results are shown below, the final results are: 
+$$
+\begin{aligned}
+\pi =&~ 0.64 \\
+\boldsymbol \mu_1 =&~ (2.04, 54.48) \\
+\boldsymbol \Sigma_1 =&~ \begin{bmatrix} 0.069 & 0.44 \\ 0.44 & 33.7 \end{bmatrix} \\
+\boldsymbol \mu_2 =&~ (4.29, 79.97) \\
+\boldsymbol \Sigma_1 =&~ \begin{bmatrix} 0.17 & 0.94 \\ 0.94 & 36.0 \end{bmatrix} \\
+\end{aligned}
+$$
+```{r fig.height = 6, fig.width = 6, out.width = '50%', fig.align = "center"}
+library(mvtnorm)
+
+# load data
+load("C:/Users/lidh9/Box Sync/STAT 542/Homeworks/HW9/faithful.rda")
+d = faithful    # dataset
+# plot(faithful, pch = 19)
+
+# initial values
+hat_mu2 = c(4.5, 80)
+hat_mu1 = c(2, 50)
+hat_Sigma2 = matrix(c(1, 0, 0, 10), 2, 2)
+hat_Sigma1 = matrix(c(1, 0, 0, 50), 2, 2)
+hat_pi = 0.5
+n = nrow(d)
+epsilon = 0.0001
+max_iter = 100
+# EM implementation
+
+results = list()
+iter = list("pi"=hat_pi, "mu1"=hat_mu1, "mu2"=hat_mu2, "Sigma1"=hat_Sigma1, "Sigma2"=hat_Sigma2)
+results[[length(results)+1]] = iter
+for (i in 1:20) {
+  
+  theta_old = c(as.numeric(hat_mu1), as.numeric(hat_mu2), as.numeric(hat_Sigma1), as.numeric(hat_Sigma1), hat_pi)
+  # E step
+  d1 = (1-hat_pi) * mvtnorm::dmvnorm(x=d, mean=as.numeric(hat_mu1), sigma=hat_Sigma1, checkSymmetry = FALSE)
+  d2 = hat_pi * mvtnorm::dmvnorm(x=d, mean=as.numeric(hat_mu2), sigma=hat_Sigma2, checkSymmetry = FALSE)
+  ez = d2/(d1 + d2)    
+  
+  # M step
+  hat_pi = mean(ez)
+  hat_mu1 = c(0,0)
+  hat_mu2 = c(0,0)
+  for (j in 1:n) {
+    hat_mu1 = hat_mu1 + (1-ez[j])*d[j,] / sum(1-ez)
+    hat_mu2 = hat_mu2 + ez[j]*d[j,] / sum(ez)
+  }
+
+  # calculate Sigma
+  hat_Sigma1 = matrix(0,2,2)
+  hat_Sigma2 = matrix(0,2,2)
+  for (j in 1:n) {
+    hat_Sigma1 = hat_Sigma1 + (1-ez[j]) * t((as.matrix(d[j,]) - as.matrix(hat_mu1))) %*% (as.matrix(d[j,]) - as.matrix(hat_mu1)) / sum(1-ez)
+    hat_Sigma2 = hat_Sigma2 + ez[j] * t((as.matrix(d[j,]) - as.matrix(hat_mu2))) %*% (as.matrix(d[j,]) - as.matrix(hat_mu2)) / sum(ez)
+  }
+  
+  iter = list("pi"=hat_pi, "mu1"=hat_mu1, "mu2"=hat_mu2, "Sigma1"=hat_Sigma1, "Sigma2"=hat_Sigma2)
+  results[[length(results)+1]] = iter
+  
+  theta_new = c(as.numeric(hat_mu1), as.numeric(hat_mu2), as.numeric(hat_Sigma1), as.numeric(hat_Sigma1), hat_pi)
+  if (mean((theta_new-theta_old)^2) <= epsilon) {
+    break
+  }
+  
+}
+
+
+# plot the current fit 
+library(mixtools)
+
+
+addellipse <- function(mu, Sigma, ...)
+{
+  ellipse(mu, Sigma, alpha = .05, lwd = 1, ...)
+  ellipse(mu, Sigma, alpha = .25, lwd = 2, ...)
+}
+
+# Plot for initial values
+plot(faithful)
+addellipse(as.numeric(results[[1]]$mu1), results[[1]]$Sigma1, col = "darkorange")
+addellipse(as.numeric(results[[1]]$mu2), results[[1]]$Sigma2, col = "deepskyblue")
+
+# Plot for 1st iteration
+plot.new()
+plot(faithful)
+addellipse(as.numeric(results[[2]]$mu1), results[[2]]$Sigma1, col = "darkorange")
+addellipse(as.numeric(results[[2]]$mu2), results[[2]]$Sigma2, col = "deepskyblue")
+
+# Plot for 2nd iteration
+plot.new()
+plot(faithful)
+addellipse(as.numeric(results[[3]]$mu1), results[[3]]$Sigma1, col = "darkorange")
+addellipse(as.numeric(results[[3]]$mu2), results[[3]]$Sigma2, col = "deepskyblue")
+
+# Plot for final iteration
+plot.new()
+plot(faithful)
+addellipse(as.numeric(results[[7]]$mu1), results[[7]]$Sigma1, col = "darkorange")
+addellipse(as.numeric(results[[7]]$mu2), results[[7]]$Sigma2, col = "deepskyblue")
+```
+
+
+
+
+
+

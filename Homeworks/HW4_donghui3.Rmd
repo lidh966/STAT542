@@ -1,0 +1,403 @@
+---
+title: 'STAT 542: Homework 4'
+author: "FALL 2020, by Donghui Li (donghui3)"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+  knitr::opts_chunk$set(echo = TRUE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '80%', fig.align = "center")
+  knitr::opts_chunk$set(cache = TRUE)
+  options(width = 90)
+```
+
+```{css, echo=FALSE}
+.solution {
+background-color: #e6ffe6;
+}
+```
+## About HW4
+
+This HW contains two major parts. In the first part, we will try to understand the properties of Ridge regression under a case where variables are highly correlated. In the first part, we perform an one-variable Lasso problem using the formula developed in the lecture. This one-variable Lasso code will then be used in HW5 to solve the solution of Lasso in a coordinate descent algorithm. Furthermore, the intercept and scaling issues need to be taking care of in a practical situation. 
+
+## Question 1 [40 Points] Correlated Variables in Ridge
+
+For this question, we will use the same [Bitcoin data](https://teazrq.github.io/stat542/data/bitcoin.csv) we already constructed in HW3. Use the same training and testing data construction. You may have already noticed that if a linear model is used to perform that task, some parameters cannot be properly estimated, for example, the `n_transactions_total` parameter is only estimated on day 1, while for day 2 and 3, their parameter estimates are `NA` because they are both highly linearly dependent on day 1. Co-linearity is a severe problem of linear regression but Ridge regression can be used to solve that problem. 
+
+### [20 Points] A Simulation Study
+
+For this sub-question you must **write your own code** without using loading any additional package, but you can still use the `lm()` function from the base package. Construct your data in the following way
+
+$$ Y = X_1 \times 0.7 + X_2 \times 0.8 + X_3 \times 0.9 + \epsilon $$
+where $X_1$ and $\epsilon$ are generated independently from standard normal distribution, and the other two covariates are simply copies of $X_1$, meaning that $X_2 = X_3 = X_1$. Generate 100 samples from this model, make sure that you save a random seed. You should write your down code to implement the ridge regression, and **no intercept is needed**. Answer the following questions before you actually fit the models:
+
+  * What will happen (regarding the parameter estimates) when you fit a linear regression using data from this model? And why?
+  * Will Ridge regression be able to address this problem? Will the parameters of the three variables be different or the same?
+  * Using the singular value decomposition (SVD) and shrinkage understanding we developed during the lecture to explain why you would expect such results from the ridge regression. 
+  
+Now, use your generated data to confirm your statements. You do no need to tune the penalty term $\lambda$, just fix it at any nonzero value. Display sufficient information to support your statements, this includes the eigen-values and the rotation matrix $\mathbf{V}$ from the SVD of $X$. 
+
+After preforming the above, modify your data by multiplying your $X_1$ by 2. Then use your code to fit the ridge regression again. What changes do you observe? Are the fitted value $\hat y$ changing? 
+
+### Answer
+#### Analysis before running simulation  
+  * Regarding the three parameters, one of them would be estimated around $2.4=0.7+0.8+0.9$ and the other two parameters be NA. Because the three variables, i.e., $X_1, X_2, X_3$ are highly relevant, even identical. SO regarding the predicted outcome, fitting one variable ($Y=2.4X_1$) would be equivalent to fitting three variables.
+  * Yes, the Ridge regression is able to solve the problem. The three parameters would be the same, because the three variables are equivalent under the $l_2$ penalty due to the same sample values.
+  * I do the SVD for the design matrix $\mathbf{X}$ and find that two of the three singular values are $0$. Besides, if looking at the rotation matrix $\mathbf{V}$, sum of elements of the 2nd column $V_2$ and 3rd column $V_3$ are both $0$, besides, all elements of the 1st column $V1$ are identical. Based on the properties of the abovementioned SVD, I can deterimine from the perspetive of PCA that there is only one non-zero principal components, which is $XV_1=[X_1,X_2,X_3][v_{11},v_{12},v_{13}]^T=v_{11}X_1+v_{12}X_2+v{13}X_3$ and we know that $v_{11}=v_{12}=v_{13}$. This indicates that the paramters obtained using ridge regression should be idetical. 
+  
+#### Confirmation after fitting  
+The code and results are shown in the following block. It can be observed that the $\hat{\beta}^{ridge}=[0.78,0.78,0.78]^T$ with three identical parameters. The results of SVD also confirm the previous analysis.
+```{r}
+set.seed(10)
+n = 100
+X1 = rnorm(n)
+X2 = X1
+X3 = X1
+Y = 0.7 * X1 + 0.8 * X2 + 0.9 * X3 + rnorm(n)
+X = cbind(X1, X2, X3)
+
+lm_fit = lm(Y ~ X-1)
+
+
+lm_ridge <- function(X, y, lambda) {
+  # ridge regression without considering of intercept
+  # X: design matrix
+  # y: training outcome
+  # lambda: tuning parameter
+  # return: beta_hat_ridge [vector of beta_j]
+  
+  beta_hat_ridge = chol2inv(chol(t(X) %*% X + lambda * diag(ncol(X)))) %*% t(X) %*% y
+  return(beta_hat_ridge)
+}
+
+lambda = 2
+beta_hat_ridge = lm_ridge(X, Y, lambda)
+print(beta_hat_ridge)
+```
+
+```{r}
+# SVD decomposition
+svd_r = svd(X)
+d = svd_r$d
+V = svd_r$v
+print(d)
+print(V)
+```
+
+#### Fitting after modifying data  
+It is observed that the three estimated $\beta_j$ are not identical, instead, $\beta_1=2\beta_2=2\beta_3$. 
+```{r}
+X1_new = 2*X1
+Y_new = 0.7 * X1_new + 0.8 * X2 + 0.9 * X3 + rnorm(n)
+X_new = cbind(X1_new, X2, X3)
+beta_hat_ridge_new = lm_ridge(X_new, Y_new, lambda)
+print(beta_hat_ridge_new)
+```
+To compare the $\hat{y}^{ols}$ and $\hat{y}^{ridge}$, I calculate their values and plot their difference as follows. It can be observed that there is almost no change between $\hat{y}^{ridge}$ and $\hat{y}^{ols}$.
+```{r}
+lm_fit_new = lm(Y_new ~ X_new-1)
+beta_hat_lm_new = lm_fit_new$coefficients
+y_hat_lm_new = X_new[,1] * beta_hat_lm_new[1]
+y_hat_new = X_new %*% beta_hat_ridge_new
+plot(y_hat_lm_new-y_hat_new, type="l", col="red", xlab="X", ylim=c(-1,1))
+```
+
+
+
+### [20 Points] Bitcoin Price Prediction Revisited
+
+For this question, take the same training and testing split from the Bitcoin data, and fit a ridge regression. You can use any existing package to perform this.
+
+  * State what criteria is used to select the best $\lambda$. 
+  * State what values of $\lambda$ are considered and report your best lambda value.
+  * Compare your model fitting results with the linear model in terms of their performances on the testing data. 
+  
+### Answer
+  * The criteria I used to find the best $\lambda$ is to run a series of ridge regression and record the GCVs, and select the $\lambda$ with the smallest GCV as the best parameter.
+  * After trial-and-error, I determine the range of $\lambda$ from $0$ to $0.1$, and the best $\lambda$ is determined as $0.015$. Below is the code to select the best parameter.
+```{r}
+library(glue)
+library(MASS)
+
+# Firstly to load and reconstruct the dataset as HW3
+setwd("C:/Users/lidh9/Box Sync/STAT 542/Homeworks/HW4")
+dataset = read.csv(file = "bitcoin.csv")
+var_names = colnames(dataset)[2:24]
+col_names = character()
+for (name in var_names) {
+  for (i in 1:3) {
+    col_names = c(col_names, glue("{name}_{i}"))
+  }
+}
+
+# convert string to date
+# dataset[, 1] = as.Date(dataset[, 1], format="%Y-%m-%d %H:%M:%S")
+
+# check NA in each row
+for (j in 2:ncol(dataset)) {
+  sum_na = 0
+  na = is.na(dataset[, j])
+  sum_na = sum(na)
+}
+# NAs occur in column of btc_trade_volumn (5th col)
+# find locations of the NAs
+# which(is.na(dataset[, 5]))
+# remove row from 483 to 488
+data_rn = rbind(dataset[1:482,], dataset[489:nrow(dataset),])
+# fill the rest NAs
+for (i in 1:nrow(data_rn)) {
+  if (is.na(data_rn[i, 5]) == TRUE) {
+    data_rn[i, 5] = data_rn[i-1, 5]
+  }
+}
+# reconstruct dataset
+# because some missing data is removed, I construct data from two parts: before-NA and after-NA
+# before NAs
+new_matrix = data_rn[1:482, 1:2]
+for (j in 2:ncol(data_rn)) {
+  var_matrix = matrix(0, 482, 3)
+  for (i in 7:482) {
+    var_matrix[i,1] = data_rn[i-6,j]
+    var_matrix[i,2] = data_rn[i-5,j]
+    var_matrix[i,3] = data_rn[i-4,j]
+  }
+  new_matrix = cbind(new_matrix, var_matrix)
+}
+# after NAs
+new_matrix_2 = cbind(dataset[489:nrow(dataset), 1], data_rn[483:nrow(data_rn), 2])
+for (j in 2:ncol(data_rn)) {
+  var_matrix = matrix(0, length(483:nrow(data_rn)), 3)
+  for (i in 483:nrow(data_rn)) {
+    var_matrix[i-482,1] = data_rn[i-6,j]
+    var_matrix[i-482,2] = data_rn[i-5,j]
+    var_matrix[i-482,3] = data_rn[i-4,j]
+  }
+  new_matrix_2 = cbind(new_matrix_2, var_matrix)
+}
+# combine them
+colnames(new_matrix_2) <- colnames(new_matrix)    # make them col name match
+data_new = rbind(new_matrix, new_matrix_2)     # merge them to have the complete matrix
+data_new = rbind(data_new[7:482,], data_new[489:nrow(data_new),])    # 1st piece start from 2010-03-01, 2nd piece start from 2011-07-02    
+colnames(data_new)[3:ncol(data_new)] <- col_names
+
+# center and scale the covariate
+X = data_new[, 2:ncol(data_new)]  
+# somehow the item becomes char, I need to convert to numeric at first
+for (i in 1:ncol(X)) {
+  storage.mode(X[,i]) <- "numeric"
+}
+X = scale(X)
+dataf = data.frame(X)    # dataframe for lm
+
+# train-test split
+# id of y in 2016-12-31 is 2016, found from new_matrix_2 1st column
+# id of y in 2017-01-07 is 2023, found from new_matrix_2 1st column
+dataf_train = dataf[1:2016,]
+dataf_test = dataf[2023:nrow(dataf),]    # the dataframe includes y
+
+# Find the best lambda
+gcv = c()
+for (lambda in seq(0, 0.1, 0.005)) {
+  fit = lm.ridge(dataf_train$btc_market_price~.-1, data = dataf_train, lambda=lambda)
+  gcv = c(gcv, fit$GCV)
+}
+
+plot(seq(0, 0.1, 0.005), gcv, xlab="lambda", ylab="GCV")    # the best lambda is 0.015
+```
+  * Running the OLS linear regression and ridge regression using the same dataset, and compare their test MSE. Code and results are as follows, and note that one may encounter the scale issue when using lm.ridge() for ridge regression, and to avoid it, I use my ridge regression function from part a to do it. It can be observed that the testing MSE from ridge regression is smaller than the OLS linear regression, indicating that ridge regression performs better in this case.
+```{r}
+# fit and compare
+lambda = 0.015
+ridge_beta = lm_ridge(as.matrix(dataf_train[,2:ncol(dataf_train)]), as.matrix(dataf_train[,1]), lambda)
+ols = lm(dataf_train$btc_market_price~.-1, data = dataf_train)
+
+yt_ridge = as.matrix(dataf_test[,2:ncol(dataf_test)]) %*% ridge_beta    # estimated y from ridge regression
+ols$coefficients[is.na(ols$coefficients)] = 0    # replace NA with 0 in order to predict
+yt_ols = as.matrix(dataf_test[,2:ncol(dataf_test)]) %*% ols$coefficients    # estimated y from ols
+
+mse_ridge = mean((yt_ridge-dataf_test[,1])^2)
+mse_ols = mean((yt_ols-dataf_test[,1])^2)
+mse_ridge
+mse_ols
+```
+
+
+## Question 2 [60 Points] One Variable Lasso
+
+Based on our development in the lecture, fitting a one variable Lasso is simply a soft-thresholding problem. Use the following code the generate a normalized data (if you use python, then do `import random` and call `random.seed(1)`) :
+
+```{r}
+  set.seed(1)
+  n = 100
+  X = rnorm(n)
+  X = X / sqrt(sum(X*X))
+  Y = X + rnorm(n)
+```
+
+Please be aware that instead of $\mathbf{X}^T \mathbf{X} = \mathbf{I}$ in the lecture note, we have $\mathbf{X}^T \mathbf{X} = n \mathbf{I}$. However, the derivation in page 33, 34 and 35 from the lecture notes remains largely unchanged except some scaling issues. We will derive a new result using the following objective function for this question:
+
+$$\arg\min_{\beta} \frac{1}{2n} \lVert \mathbf{y} - \mathbf{X}\beta \rVert + \lambda \lVert \beta \rVert_1$$
+
+### [30 Points] The Soft-thresholding Function
+
+Consider a model **without intercept**. Perform the rest:
+
+  * Re-derive the ${\hat \beta}^{\text Lasso}$ formula in page 34 and 35 based on this one variable Lasso problem with $\mathbf{X}^T \mathbf{X} = \mathbf{I}$. What is the difference between this and the original one? 
+  * After you obtaining the soft-thresholding solution similar to page 35, write a function in the form of `soft_th <- function(b, lambda)` to calculate it, where `b` is the OLS estimator, and $\lambda$ is the penalty level.
+  * Apply this function to your data and obtain the Lasso solution. Report your results
+
+### Answer
+  * Derivation:
+$$
+\begin{aligned}
+\hat{\beta}^{lasso} =&~ \arg\min_{\beta} \frac{1}{2n} \lVert \mathbf{y} - \mathbf{X} \beta \rVert^2 + \lambda \lVert \beta \rVert_1 \\
+=&~ \arg\min_{\beta} \frac{1}{2n} ( \lVert \mathbf{y} - \mathbf{X} \hat{\beta}^{ols} \rVert^2 + \lVert \mathbf{X} \hat{\beta}^{ols} - \mathbf{X} \beta \rVert^2) + \lambda \lVert \beta \rVert_1 \\
+=&~ \arg\min_{\beta} \frac{1}{2n} \lVert \mathbf{X} \hat{\beta}^{ols} - \mathbf{X} \beta \rVert^2 + \lambda \lVert \beta \rVert_1 \\
+=&~ \arg\min_{\beta} \frac{1}{2n} (\mathbf{X} \hat{\beta}^{ols} - \mathbf{X} \beta)^T(\mathbf{X} \hat{\beta}^{ols} - \mathbf{X} \beta) + \lambda \lVert \beta \rVert_1 \\
+=&~ \arg\min_{\beta} \frac{1}{2n} [(\hat{\beta}^{ols} - \beta)^T \mathbf{X}^T \mathbf{X} (\hat{\beta}^{ols} - \beta)] + \lambda \lVert \beta \rVert_1 \\
+=&~ \arg\min_{\beta} \frac{1}{2n} [(\hat{\beta}^{ols} - \beta)^T n \mathbf{I} (\hat{\beta}^{ols} - \beta)] + \lambda \lVert \beta \rVert_1 \\
+=&~ \arg\min_{\beta} \frac{1}{2} (\hat{\beta}^{ols} - \beta)^T (\hat{\beta}^{ols} - \beta) + \lambda \lVert \beta \rVert_1 \\
+=&~ \arg\min_{\beta} \sum_{j=1}^{p} [\frac{1}{2} (\beta_j - \hat{\beta}^{ols}_j)^2 + \lambda \lvert \beta_j \rvert ] \\
+=&~ \arg\min_{\beta} \frac{1}{2} (\beta_j - \hat{\beta}^{ols}_j)^2 + \lambda \lvert \beta_j \rvert ; \forall j \\
+\end{aligned}
+$$
+  The original optimization is converted to find the $\beta_j$ to have each $\frac{1}{2} (\beta_j - \hat{\beta}^{ols}_j)^2 + \lambda \lvert \beta_j \rvert$ to meet its minimal.
+  The final solution is:
+$$
+\hat{\beta}_j^{lasso} = 
+\begin{cases}
+  \hat{\beta}_j^{ols} - \lambda & \text{if } \hat{\beta}_j^{ols} > \lambda \\    
+  0 & \text{if } \lvert \hat{\beta}_j^{ols} \rvert \leq \lambda \\    
+  \hat{\beta}_j^{ols} + \lambda & \text{if } \hat{\beta}_j^{ols} < - \lambda
+\end{cases}
+$$
+  The difference between this formula and the original one is the threshold, i.e., $\frac{\lambda}{2}$ in the original one and $\lambda$ in this formula. This difference is caused by different denominator in the first derivation.
+  * The function is shown below:
+``` {r}
+soft_th <- function(b, lambda) {
+  b_lasso = vector(mode="numeric", length=length(b))
+  for (j in 1:length(b)) {
+    if (b[j] > lambda) {
+      b_lasso[j] = b[j] - lambda
+    }
+    else if (abs(b[j]) <= lambda) {
+      b_lasso[j] = 0
+    }
+    else {
+      b_lasso[j] = b[j] + lambda
+    }
+  }
+  return(b_lasso)
+}
+```
+  
+  * Applying the above data to the soft_th() function, and testing different penalty levels, the results are as below. It can be observed that the LASSO estimator decreases with the $\lambda$, and beyond a threshold, it becomes zero.
+```{r}
+set.seed(1)
+n = 100
+X = rnorm(n)
+X = X / sqrt(sum(X*X)/n)
+Y = X + rnorm(n)
+
+# 1st to get the ols
+b = lm(Y ~ X-1)$coefficients
+
+b_lasso = c()
+for (lambda in seq(0.5, 1.5, 0.1)) {
+  b_lasso = c(b_lasso, soft_th(b, lambda))
+}
+
+plot(seq(0.5, 1.5, 0.1), b_lasso)
+```
+
+### [30 Points] The Intercept, centering and Scaling Issue
+
+Re-generate your data based on the following code:
+
+```{r}
+  set.seed(1)
+  n = 100
+  X = rnorm(n, mean = 1, sd = 2)
+  Y = 1 + X + rnorm(n)
+```
+
+For this question, we will use a technique to deal with the center and scale of $X$ based on the intuition: 
+$$
+\begin{aligned}
+\frac{Y - \bar{Y}}{\text{sd}_y} =&~ \sum_{j=1}^p \frac{X_j - \bar{X}_j}{\text{sd}_j} \gamma_j \\
+Y =&~ \underbrace{\bar{Y} - \sum_{j=1}^p \bar{X}_j \frac{\text{sd}_y \cdot \gamma_j}{\text{sd}_j}}_{\beta_0} + \sum_{j=1}^p X_j \underbrace{\frac{\text{sd}_y \cdot \gamma_j}{\text{sd}_j}}_{\beta_j},
+\end{aligned}
+$$
+
+A common practice when dealing with the intercept and scaling is to perform the following:
+
+  * Center and scale both $\mathbf{X}$ (column-wise) and $\mathbf{y}$ and denote the processed data as $\frac{Y - \bar{Y}}{\text{sd}_y}$ and $\frac{X_j - \bar{X}_j}{\text{sd}_j}$ in the above formula.
+  * Fit a linear regression (or Lasso) using the processed data based on the no-intercept model, and obtain the parameter estimates $\gamma_j$. In our case, there is only one $j$, i.e. $p=1$. 
+  * Recover the original parameters $\beta_0$ and $\beta_j$'s. 
+  
+Understand and implement this procedure to our one-variable Lasso problem and obtain the Lasso solution on the original scale. You must write your own code and use the `soft_th()` function previously defined.  
+  
+### Answer
+Step 1: center and scale the data.
+```{r}
+set.seed(1)
+n = 100
+X = rnorm(n, mean = 1, sd = 2)
+Y = 1 + X + rnorm(n)
+sdx = sd(X)
+sdy = sd(Y)
+X_scale = (X-mean(X))/sdx
+Y_scale = (Y-mean(Y))/sdy
+```
+
+Step 2: Fit a LASSO regression using previously defined soft_th(). The parameter I select is $\lambda=0.1$.
+```{r}
+# lasso
+gammaj = lm(Y_scale~X_scale-1)$coefficients
+lambda = 0.1
+gammaj_lasso = soft_th(gammaj, lambda)
+```
+
+Step 3: Recover the original paramters:
+```{r}
+beta0_lasso = mean(Y) - mean(X)*sdy/sdx*gammaj_lasso
+betaj_lasso = sdy/sdx * gammaj_lasso
+beta0_lasso
+betaj_lasso
+```
+
+Note that the code below shows the procedure that I used to select the parameter $\lambda$. From the plot below, I observe that for this data, OLS regression, i.e., $\lambda=0$ would be the best, and any $\lambda>0$ yields higher MSE. While it is asked not to give a trivial solution, I select the paramter as $\lambda=0.1$.
+```{r}
+# select Lasso parameter
+lambda_seq = seq(0, 0.5, 0.01)
+mse = c()
+for (lambda in lambda_seq) {
+  gammaj_lasso = soft_th(gammaj, lambda)
+  beta0_lasso = mean(Y) - mean(X)*sdy/sdx*gammaj_lasso
+  betaj_lasso = sdy/sdx * gammaj_lasso
+  Y_hat = beta0_lasso + X * betaj_lasso
+  mse = c(mse, mean((Y-Y_hat)^2))
+}
+plot(lambda_seq, mse, xlab="lambda", ylab="MSE")
+```
+
+
+
+
+
+
+
+
+
+
+

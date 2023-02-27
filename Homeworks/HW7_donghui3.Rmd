@@ -1,0 +1,305 @@
+---
+title: 'STAT 542: Homework 7'
+author: "FALL 2020, by Donghui Li (donghui3)"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(include = TRUE)  # TRUE for solution; FALSE for questions set
+  knitr::opts_chunk$set(echo = TRUE)
+  knitr::opts_chunk$set(message = FALSE)
+  knitr::opts_chunk$set(warning = FALSE)
+  knitr::opts_chunk$set(fig.height = 6, fig.width = 8, out.width = '80%', fig.align = "center")
+  knitr::opts_chunk$set(cache = TRUE)
+  options(width = 90)
+```
+
+```{css, echo=FALSE}
+.solution {
+background-color: #e6ffe6;
+}
+```
+
+# Question 1 [65 Points] One-dimensional Kernel Regression 
+
+For this question, you should only use the base package and write all the main kernel regression mechanism by yourself. We will use the same ozone data in HW6. Again, for Question 1, we only use `time` as the covariate, while in Question 2, we use both `time` and `wind`. 
+
+```{r fig.width = 12}
+  library(mlbench)
+  data(Ozone)
+  
+  # Wind will only be used for Q2
+  mydata = data.frame("time" = seq(1:nrow(Ozone))/nrow(Ozone), "ozone" = Ozone$V4, "wind" = Ozone$V6)
+  
+  trainid = sample(1:nrow(Ozone), 250)
+  train = mydata[trainid, ]
+  test = mydata[-trainid, ]
+  
+  par(mfrow=c(1,2))
+  plot(train$time, train$ozone, pch = 19, cex = 0.5)
+  plot(train$wind, train$ozone, pch = 19, cex = 0.5)
+```
+
+Consider two kernel functions: 
+
+  * Gaussian kernel, defined as $K(u) = \frac{1}{\sqrt{2 \pi}} e^{- \frac{u^2}{2}}$
+  * Epanechnikov kernel, defined as $K(u) = \frac{3}{4}(1-u^2)$ for $|u| \leq 1$. 
+  
+For both kernel functions, incorporate a bandwidth $h$. You should start with the Silverman's rule-of-thumb for the choice of $h$, and then tune $h$. You need to perform the following:
+
+  * Using the Silverman's rule-of-thumb, fit and plot the regression line with both kernel functions, and plot them together in a single figure. Report the testing MSE of both methods.
+  
+### Answer
+The code and results are shown as below:
+```{r}
+library(mlbench)
+data(Ozone)
+
+set.seed(10)
+# Wind will only be used for Q2
+mydata = data.frame("time" = seq(1:nrow(Ozone))/nrow(Ozone), "ozone" = Ozone$V4, "wind" = Ozone$V6)
+
+trainid = sample(1:nrow(Ozone), 250)
+train = mydata[trainid, ]
+test = mydata[-trainid, ]
+
+# deal with NA
+train2 = na.omit(train)    # the original id does not work anymore
+test2 = na.omit(test)
+
+
+k1 <- function(x) {
+  # Gaussian kernel
+  return(1/sqrt(2*pi) * exp(-x^2/2))
+}
+
+k2 <- function(x) {
+  # Epanechnikov kernel
+  if (abs(x) <= 1) {
+    return(3/4 * (1 - x^2))
+  }
+  else {
+    return(0)
+  }
+}
+
+### kernel at a specific point x
+kernel_y <- function(x, xtrain, ytrain, lambda, k_type) {
+  # predict at a specific point x
+  # train: the train dataset: time, ozone, wind
+  
+  if (k_type == "1") {
+    k = k1
+  }
+  else if (k_type == "2") {
+    k = k2
+  }
+  
+  kl_xi_vec = vector(mode="numeric", length=length(xtrain))    # list of k_lambda of xi
+  for (i in 1:length(xtrain)) {
+    xi = xtrain[i]
+    u = abs(x-xi) / lambda
+    kl_xi = k(u) / lambda    # K_lambda of xi
+    kl_xi_vec[i] = kl_xi
+  }
+  
+  fx_hat = 0
+  for (i in 1:nrow(train2)) {
+    fx_hat = fx_hat + kl_xi_vec[i] / sum(kl_xi_vec) * ytrain[i]
+  }
+  
+  return(fx_hat)
+}
+### kernel for x vector
+my_kernel <- function(xtest, xtrain, ytrain, lambda, k_type) {
+  yhat = vector(mode="numeric", length=length(xtest))
+  i = 1
+  for (x in xtest) {
+    yhat[i] = kernel_y(x, xtrain, ytrain, lambda, k_type)
+    i = i+1
+  }
+  return(yhat)
+}
+
+# main
+lambda = 1.06 * sd(train2$time) * (nrow(train2))^(-1/5)
+yhat1 = my_kernel(test2$time, train2$time, train2$ozone, lambda, k_type="1")
+yhat2 = my_kernel(test2$time, train2$time, train2$ozone, lambda, k_type="2")
+mse1 = mean((yhat1 - test2$ozone)^2)
+mse2 = mean((yhat2 - test2$ozone)^2)
+
+
+# for plot
+df = data.frame(
+  "time" = test2$time,
+  "obs" = test2$ozone,
+  "yhat1" = yhat1,
+  "yhat2" = yhat2
+)
+df_sort = df[order(df$time), ]
+
+plot(df_sort$time, df_sort$obs, xlab="time", ylab="ozone")
+lines(df_sort$time, df_sort$yhat1, type="l", col="red", lwd=2)
+lines(df_sort$time, df_sort$yhat2, type="l", col="green", lwd=2)
+legend("topleft", c("observation", "Gaussian", "Epanechnikov"), col=c("black", "red", "green"), lty=c(NA, 1, 1), lwd=2, pch=c(1,NA,NA))
+
+print(paste("MSE using Gaussian kernel: ", mse1))
+print(paste("MSE using Epanechnikov kernel: ", mse2))
+```
+
+  * Base on our theoretical understanding of the bias-variance trade-off, select two $h$ values for the Gaussian kernel: a value with over-smoothing (small variance and large bias); a value with under-smoothing (large variance and small bias), and plot the two curves, along with the Gaussian rule-of-thumb curve, in a single figure. Clearly indicate which curve is over/under-smoothing.
+  
+### Answer
+I select $h=0.01$ for under-smoothing and $h=0.5$ for over-smoothing. The code and results can be shown as below:
+```{r}
+l1 = 0.001
+l2 = 0.5
+l3 = 1.06 * sd(train2$time) * (nrow(train2))^(-1/5)
+
+
+yhat1 = my_kernel(test2$time, train2$time, train2$ozone, l1, k_type="1")
+yhat2 = my_kernel(test2$time, train2$time, train2$ozone, l2, k_type="1")
+yhat3 = my_kernel(test2$time, train2$time, train2$ozone, l3, k_type="1")
+
+df = data.frame(
+  "time" = test2$time,
+  "obs" = test2$ozone,
+  "yhat1" = yhat1,
+  "yhat2" = yhat2,
+  "yhat3" = yhat3
+)
+df_sort = df[order(df$time), ]
+
+plot(df_sort$time, df_sort$obs, xlab="time", ylab="ozone")
+lines(df_sort$time, df_sort$yhat1, type="l", col="red", lwd=2)
+lines(df_sort$time, df_sort$yhat2, type="l", col="green", lwd=2)
+lines(df_sort$time, df_sort$yhat3, type="l", col="blue", lwd=2)
+legend("topleft", c("observation", "under-smooth", "over-smooth", "rule of thumb"), col=c("black", "red", "green", "blue"), lty=c(NA, 1, 1, 1), lwd=2, pch=c(1,NA,NA,NA))
+```
+
+
+  * For the Epanechnikov kernel, tune the $h$ value (on a grid of 10 different $h$ values) by minimizing the testing data. Plot your optimal regression line. 
+  
+### Answer
+The tuning parameter $\lambda$ is selected between $0.15$ and $0.25$. By finding the minimum testing MSE, the optimal $\lambda$ is determined as $0.2$. The code and results are shown as below:
+```{r}
+lambda_seq = seq(0.15, 0.25, 0.01)
+mses = vector(mode="numeric", length = length(lambda_seq))
+i = 1
+for (lambda in lambda_seq) {
+  yhat = my_kernel(test2$time, train2$time, train2$ozone, lambda, k_type="2")
+  mses[i] = mean((yhat - test2$ozone)^2)
+  i = i+1
+}
+
+plot(lambda_seq, mses, xlab="lambda", ylab="MSE")
+
+# optimal
+lambda = 0.2
+yhat = my_kernel(test2$time, train2$time, train2$ozone, lambda, k_type="2")
+
+df = data.frame(
+  "time" = test2$time,
+  "obs" = test2$ozone,
+  "yhat" = yhat
+)
+df_sort = df[order(df$time), ]
+
+plot(df_sort$time, df_sort$obs, xlab="lambda", ylab="MSE")
+lines(df_sort$time, df_sort$yhat, type="l", col="red", lwd=2)
+legend("topleft", c("observation", "optimal regression"), col=c("black", "red"), lty=c(NA, 1), lwd=2, pch=c(1,NA))
+
+```
+
+## Question 2 [35 Points] Multi-dimensional Kernel
+
+We consider using both `time` and `wind` in the regression. We use the following multivariate kernel function, which is essentially a Gaussian kernel with diagonal covariance matrix. 
+$$ K_{\boldsymbol \lambda}(x_i, x_j) = e^{-\frac{1}{2} \sum_{k=1}^p \left((x_{ik} - x_{jk})/\lambda_k\right)^2}$$
+Based on Silverman's formula, the bandwidth for the $k$th variable is given by
+$$\lambda_k = \left(\frac{4}{p+2}\right)^{\frac{1}{p+4}} n^{-\frac{1}{p+4}} \, \, \widehat \sigma_k,$$
+where $\widehat\sigma_k$ is the estimated standard deviation for variable $k$, $p$ is the number of variables, and $n$ is the sample size. Use the Nadaraya-Watson kernel estimator to fit and predict the `ozone` level. 
+
+  * Calculate the prediction error and compare this to the univariate model in Question 1. 
+  
+### Answer
+The code and results are shown below. We can observe that the MSE of testing data is smaller than that calculated in Q1.
+```{r}
+library(mlbench)
+data(Ozone)
+
+set.seed(10)
+# Wind will only be used for Q2
+mydata = data.frame("time" = seq(1:nrow(Ozone))/nrow(Ozone), "ozone" = Ozone$V4, "wind" = Ozone$V6)
+
+trainid = sample(1:nrow(Ozone), 250)
+train = mydata[trainid, ]
+test = mydata[-trainid, ]
+
+# deal with NA
+train = na.omit(train)    # the original id does not work anymore
+test = na.omit(test)
+
+### kernel at a specific point x
+kernel_y <- function(x, xtrain, ytrain, lambda1, lambda2) {
+  # predict at a specific point x
+  # x: two dimensional point
+  # xtrain: train$time; train$wind
+  # ytrain: train$ozone
+  
+  kl_xi_vec = vector(mode="numeric", length=nrow(xtrain))    # list of k_lambda of xi
+  for (i in 1:nrow(xtrain)) {
+    xi = xtrain[i, ]    # 2 dimensional point
+    kl_xi = exp(-1/2 * (((x[1]-xtrain[i,1])/lambda1)^2 + ((x[2]-xtrain[i,2])/lambda2)^2))
+    kl_xi_vec[i] = kl_xi
+  }
+  
+  fx_hat = 0
+  for (i in 1:nrow(train)) {
+    fx_hat = fx_hat + kl_xi_vec[i] / sum(kl_xi_vec) * ytrain[i]
+  }
+  
+  return(fx_hat)
+}
+### kernel for x vector
+my_kernel <- function(xtest, xtrain, ytrain, lambda1, lambda2) {
+  # xtest: test$time; test$wind
+  yhat = vector(mode="numeric", length=nrow(xtest))
+
+  for (i in 1:nrow(xtest)) {
+    yhat[i] = kernel_y(xtest[i,], xtrain, ytrain, lambda1, lambda2)
+  }
+  
+  return(yhat)
+}
+
+n = nrow(train)
+p = 2
+lambda1 = n^(-1/6) * sd(train$time)
+lambda2 = n^(-1/6) * sd(train$wind)
+
+xtest = cbind(test$time, test$wind)
+xtrain = cbind(train$time, train$wind)
+yhat = my_kernel(xtest, xtrain, train$ozone, lambda1, lambda2)
+mse = mean((yhat - test$ozone)^2)
+print(paste("MSE using Gaussian kernel in Q1: ", mse1))
+print(paste("MSE using Epanechnikov kernel in Q1: ", mse2))
+print(paste("MSE using multivariate kernel: ", mse))
+```
+
+  * Provide a discussion (you do not need to implement them) on how this current two-dimensional kernel regression can be improved. Provide at least two ideas that could potentially improve the performance. 
+  
+### Answer
+  * Tuning parameters $\lambda_1$ and $\lambda_2$ for time and wind, respectively.
+  * Using different kernel functions.
+  * Correcting bias on boundaries using local polynomial regression.
+    
+  
+  
+  

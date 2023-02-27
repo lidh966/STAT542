@@ -1,0 +1,171 @@
+---
+title: "HW1"
+author: "Donghui Li"
+date: "8/30/2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+## Basic calculus #
+1. Calculate the derivative of $f(x)$  
+    (a) $f(x) = e^x$  
+    (b) $f(x) = \log(1 + x)$  
+    (c) $f(x) = \log(1 + e^x)$  
+    
+### Answer:  
+   (a) $f^{'}(x) = e^x$  
+   (b) $f^{'}(x) = \frac{1}{1+x}$W  
+   (c) $f^{'}(x) = \frac{e^x}{1+e^x}$  
+   
+2. Taylor expansion. Let $f$: $\mathbb{R} \rightarrow \mathbb{R}$ be a twice differentiable function. Please write down the first three terms of its Taylor expansion at point $x = 1$.  
+
+### Answer:   
+   $f(x) = f(1) + \frac{f^{'}(1)}{1!}(x-1) + \frac{f^{''}(1)}{2!}(x-1)^2$  
+   
+3. For the infinite sum $\sum_{n=1}^\infty \frac{1}{n^\alpha}$, where $\alpha$ is a positive real number, give the exact range of $\alpha$ such that the series converges.  
+
+### Answer:
+   $\alpha \in (0, 1)$  
+   
+
+## Linear algebra
+
+1. What is the eigendecomposition of a real symmetric matrix $A_{n \times n}$? Write down one form of that decomposition and explain each term in your formula. Based on these terms, derive $A^{-1/2}$.  
+### Answer:  
+  Given a real symmetric matrix $A$, the decomposition can be written as:  
+  $A = Q \Lambda Q^{-1}$  
+  Where, $\Lambda$ is a diagnal matrix with each eigen value in the diagnal.  
+  Following that, we have $A^{-1/2} = (Q \Lambda Q^{-1})^{-1/2} = Q^{-1/2} \Lambda^{-1/2} Q^{1/2}$
+   
+
+2. What is a symmetric positive definite matrix $A_{n \times n}$? Give one of equivalent definitions and explain your notation.  
+### Answer:  
+  A symmetric $n \times n$ real matrix $A$ is positive definite if and only if for any non-zero real vector $z$, we have $z^T A z > 0$.
+
+3. True/False. If you claim a statement is false, explain why. For two real matrices $A_{m \times n}$ and $B_{n \times m}$
+
+    (a) Rank$(A)$ = $\max\{m, n\}$  
+    (b) If $m = n$, then trace$(A)$ = $\sum_{i=1}^n A_{ii}$   
+    (c) If $A$ is a symmetric matrix, then all eigenvalues of $A$ are real  
+    (d) If $A$ is a symmetric matrix, $\lambda_1$ and $\lambda_2$ are two of its eigen-values (not necessarily different) and $v_1$,$v_2$ are the corresponding eigen-vectors, then $v_1^T v_2 = 0$.  
+    (e) trace(ABAB) = trace(AABB)  
+### Answer:
+   (a) F. Becasue the rank of a matrix is defined as the maximum number of linearly independent vectors. It is not necessarily related to the row number or column number.  
+   (b) T.  
+   (c) T.  
+   (d) T.  
+   (e) F. Becasue the product of ABAB and AABB may be different.  
+   
+## Statistics
+1. $X_1$, $X_2$, $\ldots$, $X_n$ are i.i.d. ${\cal N}(\mu, \sigma^2)$ random variables, where $\mu \in \mathbb{R}$ and $\sigma > 0$ is finite. Let $\bar{X}_n = \frac{1}{n} \sum_{i=1}^n X_i$. 
+
+    (a) What is an unbiased estimator? Is $\bar{X}_n$ an unbiased estimator of $\mu$?  
+    (b) What is $E[(\bar{X}_n)^2]$ in terms of $n, \mu, \sigma$?    
+    (c) Give an unbiased estimator of $\sigma^2$.  
+    (d) What is a consistent estimator? Is $\bar{X}_n$ a consistent estimator of $\mu$?  
+### Answer:
+    (a) For an estimator $\hat{\theta}$ of $\theta_0$, it is unbiased if and only if $E(\hat{\theta}) = \theta_0$. Following the definition, we can easily know that $\bar{X}_n$ is an unbiased estimator of $\mu$.  
+    (b) $E[(\bar{X}_n)^2] = Var[(\bar{X}_n)^2] + [E(\bar{X}_n)]^2 = \frac{1}{n^2}Var(\sum_{i=1}^n X_i) + \mu^2 = \frac{1}{n} \sigma^2 + \mu$  
+    (c) $\frac{1}{n-1} \sum_{i=1}^n (X_i - \bar{X}_n)^2$  
+    (d) An estimator $\hat{\theta}$ of $\theta$ is consistent if and only if $\hat{\theta}$ converges in probability to $\theta$. The $\bar{X}_n$ is a consistent estimator of $\mu$.  
+    
+2. Suppose $X_{p \times 1}$ is a vector of covariates, $\beta_{p \times 1}$ is a vector of unknown parameters, $\epsilon$ is the unobserved random noise and we assume the linear model relationship $y = X^T \beta + \epsilon$. Suppose we have $n$ i.i.d. samples from this linear model, and the observed data can be written using the matrix form: $\mathbf{y}_{n \times 1} = \mathbf{X}_{n\times p} \beta_{p \times 1} + \boldsymbol \epsilon_{n \times 1}$. 
+
+    (a) If we want estimate the unknown $\beta$ using a least square method, what is the objective function $L(\beta)$ to obtain $\widehat \beta$?  
+    (b) What is the solution of $\widehat \beta$? Represent the solution using the observed data $\mathbf{y}$ and $\mathbf{X}_{n\times p}$. Note that you may assume that $\mathbf{X}^T \mathbf{X}$ is invertible.
+### Answer:
+    (a) $L(\beta) = {\vert X_\beta-y \vert}^2 = (X \beta - y)^T (X \beta - y) = \beta^T X^T X \beta - \beta^T X^T y - y^T X \beta + y^T y$    
+    (b) Let $\frac{\partial L}{\partial \beta} = 2 X^T X \beta - 2 X^T y = 0$, then we have $\hat{\beta} = (X^T X)^{-1} X^T y$  
+    
+
+## Programming  
+1. Use the following code to generate a set of observations $\mathbf{y}$ and $\mathbf{X}_{n\times p}$. Following the previously established formula, Write your own code, instead of using existing functions such as `lm()`, to solve for the least square estimator $\widehat \beta$. If you are asked to add an intercept term $\beta_0$ into your estimation (even the true $\beta_0 = 0$ in our data generator), what should you do? 
+```r
+  set.seed(1)
+  n = 100; p = 5
+  X = matrix(rnorm(n * p), n, p)
+  y = X %*% c(1, 0, 0, 1, -1) + rnorm(n)
+```
+### Answer  
+Using the r code below to calculate the $\hat{\beta}$:    
+```r
+library(matlib)
+set.seed(1)
+n = 100; p = 5
+X = matrix(rnorm(n * p), n, p)
+beta = inv(t(X) %*% X) %*% t(X) %*% y
+```  
+### Continued Answer  
+If adding $\beta_0$ to estimation, similarly, we can write the estimation function as:  
+$y = X^T \beta + \beta_0 + \epsilon$  
+then $L(\beta, \beta_0) = {\vert X \beta + \beta_0 - y \vert}^2 = (X \beta + \beta_0 - y)^T (X \beta + \beta_0 - y)$  
+Similarly, we take derivative for $\beta$ and $\beta_0$:  
+$\frac{\partial L}{\partial \beta} = 0$ and $\frac{\partial L}{\partial \beta_0} = 0$  
+Finally we solve the above equation groups to obtain the formula of $\hat{\beta}$ and $\hat{\beta_0}$.  
+
+
+2. Perform a simulation study to check the consistency of the sample mean estimator $\bar{X}_n$. Please save your random seed so that the results can be replicated by others. 
+
+    (a) Generate a set of $n = 20$ i.i.d. observations from uniform (0, 1) distribution and calculate the sample mean $\bar{X}_n$  
+    (b) Repeat step (a) 1000 times to collect 1000 such sample means and plot them using a histogram.   
+    (c) How many of such sample means (out of 1000) are at least 0.1 away from true mean parameter, which is 0.5 for uniform (0, 1)?  
+    (d) Repeat steps (a) to (c) with $n = 100$ and $n = 500$. What conclusion can you make?  
+    
+### Answer  
+(a) Code for this question is shown below.    
+```{r}
+set.seed(1)
+obs = runif(20, min = 0, max = 1)
+sp_mean = mean(obs)
+sp_mean
+```  
+(b) Code for this question is shown below.    
+```{r}
+# For question b
+n = 20
+sp_means <- numeric(length = 1000)
+for (i in 1:1000) {
+  set.seed(i)    # Given each generation a specific seed for repetition
+  obs = runif(20, min = 0, max = 1)
+  sp_mean <- mean(obs)
+  sp_means[i] <- sp_mean
+}
+hist(sp_means, xlim=c(0,1), main="Histogram of sample means", xlab='Sample means', ylab='Counts')
+```  
+(c) There are 142 sample means that are out of at least 0.1 from the true parameter.  
+```{r}
+num_out <- 0
+for (item in sp_means) {
+  if (abs(item-0.5) > 0.1) {
+    num_out <- num_out + 1
+  }
+}
+num_out
+```  
+(d) For $n=100$:    
+```{r}
+n = 100
+sp_means <- numeric(length = 1000)
+for (i in 1:1000) {
+  set.seed(i)    # Given each generation a specific seed for repetition
+  obs = runif(n, min = 0, max = 1)
+  sp_mean <- mean(obs)
+  sp_means[i] <- sp_mean
+}
+hist(sp_means, xlim=c(0,1), main="Histogram of sample means", xlab='Sample means', ylab='Counts')
+```    
+  For $n=500$:
+```{r}
+n = 500
+sp_means <- numeric(length = 1000)
+for (i in 1:1000) {
+  set.seed(i)    # Given each generation a specific seed for repetition
+  obs = runif(n, min = 0, max = 1)
+  sp_mean <- mean(obs)
+  sp_means[i] <- sp_mean
+}
+hist(sp_means, xlim=c(0,1), main="Histogram of sample means", xlab='Sample means', ylab='Counts')
+```
+It can be observed that with increasing $n$, i.e., sample size, the sample means "converges" to 0.5, which is the true value of the parameter. This shows the consistency of the sample mean as an estimator of mean.
